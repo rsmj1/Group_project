@@ -48,13 +48,13 @@ class TspProg:
             for j in range(mu):
                 p1 = selection(distanceMatrix, population, k)
                 p2 = selection(distanceMatrix,population, k)
-				#offspring[j] = generate_child_chromosome(p1, p2)
+                #offspring[j] = generate_child_chromosome(p1, p2)
                 offspring[j] = pmx(p1, p2)
                 swapMutation(offspring[j])
 
 			#Mutation
             for elem in population:
-                invMutation(elem)
+                swapMutation(elem)
 
 
 
@@ -98,7 +98,7 @@ class Individual:
       self.route = route
     #self adaptivity parameter
     if alpha is None:
-      self.alpha = 0.05
+      self.alpha = max(0.01, 0.1 + 0.02*np.random.normal())
     else:
       self.alpha = alpha
 
@@ -138,9 +138,10 @@ def cycleSolution(dmatrix, individual):
 def invMutation(individual):
   #Mutate with probability prob from the individual
   if np.random.uniform() < individual.alpha:
-    i = np.random.randint(0,len(individual.route))
-    j = np.random.randint(0,len(individual.route))
+    i = np.random.randint(0,len(individual.route)-1)
+    j = np.random.randint(i+1,len(individual.route))
     individual.route[i:j] = individual.route[i:j][::-1]
+
   
 
 #Mutate inplace, so returns nothing - SWAP MUTATION
@@ -152,6 +153,8 @@ def swapMutation(individual):
     tmp = individual.route[i]
     individual.route[i] = individual.route[j]
     individual.route[j] = tmp
+
+
 
 
 def edge_crossover(parent1, parent2):
@@ -305,13 +308,13 @@ def generate_child_chromosome(parent1, parent2):
         X = Z
 
     # Return the CHILD chromosome
-    return Individual(route = CHILD)
+    return Individual(route = CHILD, alpha = combineAlphas(parent1.alpha, parent2.alpha))
 
 ### PMX ###
 
-def pmx(candidate1, candidate2):
-    candidate1 = list(candidate1.route)
-    candidate2 = list(candidate2.route)
+def pmx(candidate11, candidate22):
+    candidate1 = list(candidate11.route)
+    candidate2 = list(candidate22.route)
     if len(candidate1) != len(candidate2):
         print('Candidate solutions must have same length')
         return 0
@@ -365,7 +368,7 @@ def pmx(candidate1, candidate2):
     for final_item in full_set^index_set:
         offspring[final_item] = candidate2[final_item]
 
-    return Individual(route = np.array(offspring))
+    return Individual(route = np.array(offspring), alpha=combineAlphas(candidate11.alpha, candidate22.alpha))
 
 def recursive_fill(index,index_set,item,offspring,candidate):
     if index not in index_set:
@@ -407,7 +410,10 @@ def elimination(dmatrix, pop, offspring, l):
     return choices
 
 
-
+def combineAlphas(a1, a2):
+    b = 2 * np.random.uniform() - 0.5
+    a = a1 + b * (a2-a1)
+    return a
 
 
 #At some point we need to translate our path into a cycle
@@ -417,17 +423,17 @@ def solutionToCycle():
 
 
 def printIndividual(ind, dmatrix = None):
-	route = ind.route
-	alpha = ind.alpha
+    route = ind.route
+    alpha = ind.alpha
 	#print("Alpha: ", alpha)
-	print("Route: ", end="")
-	if dmatrix is None:
-		for i, r in enumerate(route):
-			print(r, end = " -> ")
-	else: 
-		for i in range(len(route)-1):
-			print(route[i], "->", route[i+1], "(", dmatrix[route[i], route[i+1]],")", end="|")
-	print(route[len(route)-1], "->", route[0], "(", dmatrix[route[len(route)-1], route[0]],")")
+    print("Route: ", end="")
+    if dmatrix is None:
+        for i, r in enumerate(route):
+            print(r, end = " -> ")
+    else: 
+        for i in range(len(route)-1):
+            print(route[i], "->", route[i+1], "(", dmatrix[route[i], route[i+1]],")", end="|")
+        print(route[len(route)-1], "->", route[0], "(", dmatrix[route[len(route)-1], route[0]],")")
   
 def printPopulation(pop, dmatrix):
      print("Printing population of size ", len(pop))
@@ -467,5 +473,5 @@ testInd = Individual(4)
 
 
 prog = TspProg()
-params = Parameters(lambd=150, mu=150, k=5, its=500)
+params = Parameters(lambd=200, mu=200, k=5, its=500)
 prog.optimize("tour50.csv", params)
