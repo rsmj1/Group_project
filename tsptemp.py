@@ -5,82 +5,86 @@ import random
 # Modify the class name to match your student number.
 class TspProg:
 
-	def __init__(self):
-		self.reporter = Reporter.Reporter(self.__class__.__name__)
+    def __init__(self):
+        self.reporter = Reporter.Reporter(self.__class__.__name__)
 
 	# The evolutionary algorithm's main loop
-	def optimize(self, filename):
+    def optimize(self, filename, params, testFile = None):
 		# Read distance matrix from file.		
-		file = open(filename)
-		distanceMatrix = np.loadtxt(file, delimiter=",")
-		file.close()
-		print("Distance Matrix:", distanceMatrix)
-		
+        file = open(filename)
+        distanceMatrix = np.loadtxt(file, delimiter=",")
+        file.close()
 		
 		# Your code here.
 
+        #We can use custom arrays instead of the csv files for testing
+        if testFile is not None:
+            distanceMatrix = testFile
 
+        print("Distance Matrix: \n", distanceMatrix)
 		#Parameters
-		lam = 10
-		mu = 10
-    #K-tournament selection param    
-		k = 5    
-		iterations = 100
-		numCities = len(distanceMatrix[0])
+        lam = params.la #Population size
+        mu = params.mu  #Offspring size  
+        k = params.k    #K-tournament selection param  
+        iterations = params.iterations
+        numCities = len(distanceMatrix[0])
 
     
-    #Initialise the population
-		population = initPopulation(numCities, lam)
-		i = 0
-		yourConvergenceTestsHere = True
-		while( yourConvergenceTestsHere ):
-			meanObjective = 0.0
-			bestObjective = 0.0
-			bestSolution = np.array([1,2,3,4,5])
+        #Initialise the population
+        population = initPopulation(numCities, lam)
+        i = 0
+        yourConvergenceTestsHere = True
+        while( yourConvergenceTestsHere ):
+            meanObjective = 0.0
+            bestObjective = 0.0
+            bestSolution = np.array([1,2,3,4,5])
 
 			# Your code here.
 			#Create offspring
-			offspring = np.empty(mu, dtype = Individual)
+            offspring = np.empty(mu, dtype = Individual)
 
-      # Select from the population:
+        # Select from the population:
 			#Recombination (D' X D' -> D')
-			for j in range(mu):
-				p1 = selection(distanceMatrix, population, k)
-				p2 = selection(distanceMatrix,population, k)
+            for j in range(mu):
+                p1 = selection(distanceMatrix, population, k)
+                p2 = selection(distanceMatrix,population, k)
 				#offspring[j] = generate_child_chromosome(p1, p2)
-				offspring[j] = pmx(p1, p2)
-				swapMutation(offspring[j])
+                offspring[j] = pmx(p1, p2)
+                swapMutation(offspring[j])
 
 			#Mutation
-			for elem in population:
-				invMutation(elem)
+            for elem in population:
+                invMutation(elem)
 
 
 
 			#Elimination
-			population = elimination(distanceMatrix, population, offspring, lam)
+            population = elimination(distanceMatrix, population, offspring, lam)
 
       
 
 			#Evaluation
-			objectiveValues = np.array([fitness(distanceMatrix, ind) for ind in population])
-			print("Iteration: ", i, ", Mean fitness:", np.mean(objectiveValues), " Max fitness:", np.max(objectiveValues))
+            objectiveValues = np.array([fitness(distanceMatrix, ind) for ind in population])
+            print("Iteration: ", i, ", Mean fitness:", np.mean(objectiveValues), " Min fitness:", np.min(objectiveValues))
 
-			i += 1
+            i += 1
 
 			# Call the reporter with:
 			#  - the mean objective function value of the population
 			#  - the best objective function value of the population
 			#  - a 1D numpy array in the cycle notation containing the best solution 
 			#    with city numbering starting from 0
-			timeLeft = self.reporter.report(meanObjective, bestObjective, bestSolution)
+            timeLeft = self.reporter.report(meanObjective, bestObjective, bestSolution)
 			#print("hello", timeLeft)
-			if timeLeft < 0:
-				break
+            if i >= iterations:
+                break
+
+            if timeLeft < 0:
+                break
             
-		print("DONE!!!")
+        print("DONE!!!")
 		# Your code here.
-		return 0
+        return 0
 
 
 
@@ -98,6 +102,15 @@ class Individual:
     else:
       self.alpha = alpha
 
+class Parameters:
+  def __init__(self, lambd, mu, k, its):
+    self.la = lambd
+    self.mu = mu
+    self.k = k
+    self.iterations = its
+
+
+
 def initPopulation(numCities, popSize):
   return np.array([Individual(numCities) for i in range(popSize)])
 
@@ -106,7 +119,7 @@ def fitness(dmatrix, individual):
 	distance = 0
 	n = len(dmatrix[0])
 	route = individual.route
-	print("Route length:", len(route))
+	#print("Route length:", len(route))
 	for i in range(0,n-1):
 		distance += dmatrix[route[i], route[i+1]]  
 	distance += dmatrix[route[n-1], route[0]]      
@@ -313,8 +326,7 @@ def pmx(candidate1, candidate2):
     a = my_range[0]
     b = my_range[1]
 
-    print(a,b)
-
+    #print(a,b)
     for j in range(a,b):
         index_set.add(j)
 
@@ -372,20 +384,27 @@ def recursive_fill(index,index_set,item,offspring,candidate):
 #K-tournament selection
 def selection(dmatrix, pop, k=5):
   selected = np.random.choice(pop, k)
-  choice = np.argmax(np.array([fitness(dmatrix, x) for x in selected]))
+  min = np.inf
+  for ind in selected:
+      if fitness(dmatrix, ind) < min:
+        min = fitness(dmatrix, ind)
+
+  choice = np.argmin(np.array([fitness(dmatrix, x) for x in selected]))
+  
+  assert fitness(dmatrix, selected[choice]) == min, "did not choose smallest value in selection"
   return selected[choice]
 
 #lambda + mu elimination
 def elimination(dmatrix, pop, offspring, l):
-	combination = np.append(pop, offspring)
+    combination = np.append(pop, offspring)
 	#print('Combo: ',combination)
-	pred = np.array([fitness(dmatrix, x) for x in combination])
+    pred = np.array([fitness(dmatrix, x) for x in combination])
 	#print("Pred:", pred)
-	ordering = np.argsort(pred)
+    ordering = np.argsort(pred)
 	#print("Ordering:", ordering)
-	choices = combination[ordering][l:]
+    choices = combination[ordering][:l]
 	#print("Choices:", choices)
-	return choices
+    return choices
 
 
 
@@ -395,36 +414,58 @@ def elimination(dmatrix, pop, offspring, l):
 def solutionToCycle():
     return []
 
-#prog = TspProg()
 
-#prog.optimize("tour50.csv")
-
-testArray1 = np.array([[0, 1.5, 2.4, 3.4],
-                       [2.8, 0, 5.1, 1.3],
-											 [10., 5.4, 0, 9.5],
-                       [6.6, 3.8, 9.3, 0]])
-
-testArray2 = np.array([[0, 1.5, 2.4, 3.4],
-                       [2.8, 0, np.inf, 1.3],
-											 [10., 5.4, 0, 9.5],
-                       [np.inf, 3.8, 9.3, 0]])
-testInd = Individual(4)
 
 def printIndividual(ind, dmatrix = None):
 	route = ind.route
 	alpha = ind.alpha
-	print("Individual:")
-	print("Alpha: ", alpha)
+	#print("Alpha: ", alpha)
 	print("Route: ", end="")
 	if dmatrix is None:
 		for i, r in enumerate(route):
 			print(r, end = " -> ")
 	else: 
 		for i in range(len(route)-1):
-			print(route[i], "->", route[i+1], "(", dmatrix[i, i+1],")", end="|")
-	print(route[len(route)-1], "->", route[0], "(", dmatrix[len(route)-1, 0],")")
+			print(route[i], "->", route[i+1], "(", dmatrix[route[i], route[i+1]],")", end="|")
+	print(route[len(route)-1], "->", route[0], "(", dmatrix[route[len(route)-1], route[0]],")")
   
-    
-        
+def printPopulation(pop, dmatrix):
+     print("Printing population of size ", len(pop))
+     for i, ind in enumerate(pop):
+          print(i, end= ":")
+          printIndividual(ind, dmatrix)
+          print("Fitness:", fitness(dmatrix, ind))
 
-printIndividual(testInd, testArray1)
+
+
+
+
+
+
+
+
+
+############################## RUN SETUP ################################
+
+
+
+
+testArray1 = np.array([[0, 1.5, 2.4, 3.4],
+                       [2.8, 0, 5.1, 1.3],
+					   [10., 5.4, 0, 9.5],
+                       [6.6, 3.8, 9.3, 0]])
+
+testArray2 = np.array([[0, 1.5, 2.4, 3.4],
+                       [2.8, 0, np.inf, 1.3],
+					   [10., 5.4, 0, 9.5],
+                       [np.inf, 3.8, 9.3, 0]])
+testInd = Individual(4)
+
+
+#printIndividual(testInd, testArray1)
+
+
+
+prog = TspProg()
+params = Parameters(lambd=150, mu=150, k=5, its=500)
+prog.optimize("tour50.csv", params)
