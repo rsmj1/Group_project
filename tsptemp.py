@@ -9,7 +9,7 @@ class TspProg:
         self.reporter = Reporter.Reporter(self.__class__.__name__)
 
 	# The evolutionary algorithm's main loop
-    def optimize(self, filename, params, testFile = None):
+    def optimize(self, filename, params, oneOffspring = True, testFile = None):
 		# Read distance matrix from file.		
         file = open(filename)
         distanceMatrix = np.loadtxt(file, delimiter=",")
@@ -29,7 +29,9 @@ class TspProg:
         iterations = params.iterations
         numCities = len(distanceMatrix[0])
 
-    
+        bestInd = Individual(numCities)
+
+
         #Initialise the population
         population = initPopulation(numCities, lam)
         i = 0
@@ -40,21 +42,32 @@ class TspProg:
             bestSolution = np.array([1,2,3,4,5])
 
 			# Your code here.
+
 			#Create offspring
             offspring = np.empty(mu, dtype = Individual)
 
-        # Select from the population:
+            # Select from the population:
 			#Recombination (D' X D' -> D')
-            for j in range(mu):
-                p1 = selection(distanceMatrix, population, k)
-                p2 = selection(distanceMatrix,population, k)
-                #offspring[j] = generate_child_chromosome(p1, p2)
-                offspring[j] = pmx(p1, p2)
-                swapMutation(offspring[j])
+            if oneOffspring: #Recombination resulting in one offspring
+                for j in range(mu):
+                    p1 = selection(distanceMatrix, population, k)
+                    p2 = selection(distanceMatrix,population, k)
+                    #offspring[j] = generate_child_chromosome(p1, p2)
+                    offspring[j] = pmx(p1, p2)
+                    invMutation(offspring[j]) #Invmutation generally has worse performance than swap
+            else: #Recombinatino resulting in two offspring
+                for j in range(mu//2):
+                    p1 = selection(distanceMatrix, population, k)
+                    p2 = selection(distanceMatrix,population, k)
+                    res = tpx(p1, p2)
+                    offspring[j*2] = res[0]
+                    offspring[j*2+1] = res[1]
+                    invMutation(offspring[j*2]) #Invmutation generally has worse performance than swap
+                    invMutation(offspring[j*2+1]) #Invmutation generally has worse performance than swap
 
 			#Mutation
             for elem in population:
-                swapMutation(elem)
+                invMutation(elem)
 
 
 
@@ -65,7 +78,9 @@ class TspProg:
 
 			#Evaluation
             objectiveValues = np.array([fitness(distanceMatrix, ind) for ind in population])
-            print("Iteration: ", i, ", Mean fitness:", np.mean(objectiveValues), " Min fitness:", np.min(objectiveValues))
+            mean = np.mean(objectiveValues)
+            minimum = np.min(objectiveValues)
+            print("Iteration: ", i, ", Mean fitness:", mean, " Min fitness:", minimum, "Mean mutation rate:", np.mean(np.array([ind.alpha for ind in population])))
 
             i += 1
 
@@ -77,12 +92,15 @@ class TspProg:
             timeLeft = self.reporter.report(meanObjective, bestObjective, bestSolution)
 			#print("hello", timeLeft)
             if i >= iterations:
+                bestInd = population[np.argmin(objectiveValues)]
                 break
 
             if timeLeft < 0:
                 break
             
         print("DONE!!!")
+        print("Route of best individual:")
+        printIndividual(bestInd, distanceMatrix)
 		# Your code here.
         return 0
 
@@ -98,7 +116,8 @@ class Individual:
       self.route = route
     #self adaptivity parameter
     if alpha is None:
-      self.alpha = max(0.01, 0.1 + 0.02*np.random.normal())
+      #self.alpha = max(0.05, 0.1 + 0.05*np.random.normal()) # max(0.05, 0.1 + ~N(0, 0.05^2))
+      self.alpha = 0.5
     else:
       self.alpha = alpha
 
@@ -134,13 +153,14 @@ def cycleSolution(dmatrix, individual):
 
 ####################### MUTATIONS #############################
 
-#Mutate inplace, so returns nothing - INVERSION MUTATION
+#Mutate inplace, so returns nothing - INVERSION MUTATION (also called (R)reverse (S)equence (M)utation)
 def invMutation(individual):
   #Mutate with probability prob from the individual
   if np.random.uniform() < individual.alpha:
     i = np.random.randint(0,len(individual.route)-1)
     j = np.random.randint(i+1,len(individual.route))
-    individual.route[i:j] = individual.route[i:j][::-1]
+    #individual.route[i:j] = individual.route[i:j][::-1]
+    individual.route[i:j] = np.flip(individual.route[i:j])
 
   
 
@@ -154,6 +174,20 @@ def swapMutation(individual):
     individual.route[i] = individual.route[j]
     individual.route[j] = tmp
 
+
+
+######################### RECOMBINATIONS ###############################
+
+def tpx(parent1, parent2):
+    i = np.random.randint(0,len(parent1.route)-1)
+    j = np.random.randint(i+1,len(parent1.route)) 
+    route1 = np.ndarray.copy(parent1.route)
+    route2 = np.ndarray.copy(parent2.route)
+    temp = np.ndarray.copy(route1[i:j])
+    route1[i:j] = np.ndarray.copy(route2[i:j])
+    route2[i:j] = temp
+    alpha = combineAlphas(parent1.alpha, parent2.alpha)
+    return Individual(route=route1, alpha=alpha), Individual(route=route2, alpha=alpha)
 
 
 
@@ -411,9 +445,9 @@ def elimination(dmatrix, pop, offspring, l):
 
 
 def combineAlphas(a1, a2):
-    b = 2 * np.random.uniform() - 0.5
-    a = a1 + b * (a2-a1)
-    return a
+    b = 2 * np.random.uniform() - 0.5 #Between -0.5 and 1.5
+    a = a1 + b * (a2-a1) 
+    return np.abs(a)
 
 
 #At some point we need to translate our path into a cycle
@@ -471,7 +505,6 @@ testInd = Individual(4)
 #printIndividual(testInd, testArray1)
 
 
-
 prog = TspProg()
-params = Parameters(lambd=200, mu=200, k=5, its=500)
-prog.optimize("tour50.csv", params)
+params = Parameters(lambd=500, mu=500, k=5, its=500)
+prog.optimize("tour50.csv", params, oneOffspring=True)
