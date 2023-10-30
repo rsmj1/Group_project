@@ -2,6 +2,10 @@ import Reporter
 import numpy as np
 import random
 
+##### Our files #####
+import popgen
+
+
 # Modify the class name to match your student number.
 class TspProg:
 
@@ -32,8 +36,16 @@ class TspProg:
         bestInd = Individual(numCities)
 
 
-        #Initialise the population
-        population = initPopulation(numCities, lam)
+        #(Old) Initialise the population
+        #population = initPopulation(numCities, lam)
+        
+        #popgen generation
+        generator = popgen.TSPPopulationGenerator(distanceMatrix, lam)
+        population = np.empty(mu, dtype = Individual)
+        routes = generator.random_generation()
+        for ro, route in enumerate(routes):
+            population[ro] = Individual(route=route)
+
         i = 0
         yourConvergenceTestsHere = True
         while( yourConvergenceTestsHere ):
@@ -51,7 +63,7 @@ class TspProg:
             if oneOffspring: #Recombination resulting in one offspring
                 for j in range(mu):
                     p1 = selection(distanceMatrix, population, k)
-                    p2 = selection(distanceMatrix,population, k)
+                    p2 = selection(distanceMatrix, population, k)
                     #offspring[j] = generate_child_chromosome(p1, p2)
                     offspring[j] = pmx(p1, p2)
                     invMutation(offspring[j]) #Invmutation generally has worse performance than swap
