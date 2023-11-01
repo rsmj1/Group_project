@@ -1,11 +1,9 @@
 import Reporter
 import numpy as np
 import random
-from scipy.stats import truncexpon
 import math
-##### Our files #####
-import popgen
-
+from scipy.stats import truncexpon
+import matplotlib.pyplot as plt
 
 # Modify the class name to match your student number.
 class TspProg:
@@ -37,16 +35,8 @@ class TspProg:
         bestInd = Individual(numCities)
 
 
-        #(Old) Initialise the population
-        #population = initPopulation(numCities, lam)
-        
-        #popgen generation
-        generator = popgen.TSPPopulationGenerator(distanceMatrix, lam)
-        population = np.empty(mu, dtype = Individual)
-        routes = generator.heuristic_initialization()
-        for ro, route in enumerate(routes):
-            population[ro] = Individual(route=route)
-
+        #Initialise the population
+        population = initPopulation(numCities, lam)
         i = 0
         yourConvergenceTestsHere = True
         while( yourConvergenceTestsHere ):
@@ -59,26 +49,27 @@ class TspProg:
 			#Create offspring
             offspring = np.empty(mu, dtype = Individual)
 
+
+            '''
             # Select from the population:
 			#Recombination (D' X D' -> D')
-            # if oneOffspring: #Recombination resulting in one offspring
-            #     for j in range(mu):
-            #         p1 = selection(distanceMatrix, population, k)
-            #         p2 = selection(distanceMatrix, population, k)
-            #         #offspring[j] = generate_child_chromosome(p1, p2)
-            #         offspring[j] = pmx(p1, p2)
-            #         invMutation(offspring[j]) #Invmutation generally has worse performance than swap
-            # else: #Recombinatino resulting in two offspring
-            #     for j in range(mu//2):
-            #         p1 = selection(distanceMatrix, population, k)
-            #         p2 = selection(distanceMatrix,population, k)
-            #         res = tpx(p1, p2)
-            #         offspring[j*2] = res[0]
-            #         offspring[j*2+1] = res[1]
-            #         invMutation(offspring[j*2]) #Invmutation generally has worse performance than swap
-            #         invMutation(offspring[j*2+1]) #Invmutation generally has worse performance than swap
-
-
+            if oneOffspring: #Recombination resulting in one offspring
+                for j in range(mu):
+                    p1 = selection(distanceMatrix, population, k)
+                    p2 = selection(distanceMatrix,population, k)
+                    #offspring[j] = generate_child_chromosome(p1, p2)
+                    offspring[j] = pmx(p1, p2)
+                    invMutation(offspring[j]) #Invmutation generally has worse performance than swap
+            else: #Recombinatino resulting in two offspring
+                for j in range(mu//2):
+                    p1 = selection(distanceMatrix, population, k)
+                    p2 = selection(distanceMatrix,population, k)
+                    res = tpx(p1, p2)
+                    offspring[j*2] = res[0]
+                    offspring[j*2+1] = res[1]
+                    invMutation(offspring[j*2]) #Invmutation generally has worse performance than swap
+                    invMutation(offspring[j*2+1]) #Invmutation generally has worse performance than swap
+            '''
 
             if oneOffspring: #Recombination resulting in one offspring
                 selected_individuals = exp_selection(distanceMatrix, population, lam, 2*mu)
@@ -99,10 +90,6 @@ class TspProg:
                     offspring[j*2+1] = res[1]
                     invMutation(offspring[j*2]) #Invmutation generally has worse performance than swap
                     invMutation(offspring[j*2+1]) #Invmutation generally has worse performance than swap
-
-
-
-
 
 			#Mutation
             for elem in population:
@@ -491,8 +478,6 @@ def exp_selection(dmatrix, pop, l, mu, selection_pressure=0.0001):
     return output
 
 
-
-
 #lambda + mu elimination
 def elimination(dmatrix, pop, offspring, l):
     combination = np.append(pop, offspring)
@@ -568,5 +553,6 @@ testInd = Individual(4)
 
 
 prog = TspProg()
-params = Parameters(lambd=500, mu=500, k=5, its=1)
+params = Parameters(lambd=500, mu=500, k=5, its=500)
 prog.optimize("tour50.csv", params, oneOffspring=True)
+#print(exp_selection(100))
