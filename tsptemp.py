@@ -3,6 +3,8 @@ import numpy as np
 import random
 from scipy.stats import truncexpon
 import math
+import matplotlib.pyplot as plt
+
 ##### Our files #####
 import popgen
 
@@ -46,6 +48,9 @@ class TspProg:
         routes = generator.heuristic_initialization()
         for ro, route in enumerate(routes):
             population[ro] = Individual(route=route)
+
+        meanHist = []
+        minimumHist = []
 
         i = 0
         yourConvergenceTestsHere = True
@@ -119,6 +124,8 @@ class TspProg:
             objectiveValues = np.array([fitness(distanceMatrix, ind) for ind in population])
             mean = np.mean(objectiveValues)
             minimum = np.min(objectiveValues)
+            meanHist.append(mean)
+            minimumHist.append(minimum)
             print("Iteration: ", i, ", Mean fitness:", mean, " Min fitness:", minimum, "Mean mutation rate:", np.mean(np.array([ind.alpha for ind in population])))
 
             i += 1
@@ -140,6 +147,7 @@ class TspProg:
         print("DONE!!!")
         print("Route of best individual:")
         printIndividual(bestInd, distanceMatrix)
+        plotResuts(meanHist, minimumHist)
 		# Your code here.
         return 0
 
@@ -183,8 +191,7 @@ def fitness(dmatrix, individual):
 	distance += dmatrix[route[n-1], route[0]]      
 	return distance
 
-def cycleSolution(dmatrix, individual):
-     return []
+
 
 
 
@@ -513,7 +520,7 @@ def combineAlphas(a1, a2):
 
 
 #At some point we need to translate our path into a cycle
-def solutionToCycle():
+def solutionToCycle(path):
     return []
 
 
@@ -540,7 +547,15 @@ def printPopulation(pop, dmatrix):
 
 
 
-
+def plotResuts(mean, min):
+    n = len(mean)
+    x = np.arange(n)
+    plt.plot(x, mean, 'b', label="Mean Fitness")
+    plt.plot(x, min, 'r', label="Min Fitness")
+    plt.xlabel("Iterations")
+    plt.ylabel("Fitness")
+    plt.legend(loc="upper right")
+    plt.show()
 
 
 
@@ -568,5 +583,7 @@ testInd = Individual(4)
 
 
 prog = TspProg()
-params = Parameters(lambd=500, mu=500, k=5, its=1)
+params = Parameters(lambd=500, mu=500, k=5, its=25)
 prog.optimize("tour50.csv", params, oneOffspring=True)
+#print("Route:", testInd.route)
+#print("Cycle:", solutionToCycle(testInd.route))

@@ -1,5 +1,6 @@
 import numpy as np
-
+import math
+from scipy.stats import truncexpon
 
 def stochastic_universal_sampling(population, fitness_values, num_parents):
     """
@@ -83,34 +84,42 @@ def rank_based_selection(population, fitness_values, num_parents):
 
     return selected_parents
 
-def exponential_selection(population, fitness_values, num_parents, beta):
+
+def exponential_selection(distance_matrix, population, lmbda, mu, selection_pressure=0.0001):
     """
-    Perform Exponential Selection to select parents from the population.
+    Perform Exponential Selection in a Genetic Algorithm.
 
     Args:
-        population (numpy.ndarray): The population to select from.
-        fitness_values (numpy.ndarray): An array of fitness values for each individual.
-        num_parents (int): The number of parents to select.
-        beta (float): The selection pressure parameter.
+        distance_matrix  (numpy.ndarray): Distance matrix.
+        population (list): List of individuals.
+        lmbda (int): The lambda value.
+        mu (int): The mu value.
+        selection_pressure (float): Selection pressure parameter (default 0.0001).
 
     Returns:
-        numpy.ndarray: An array of selected parents from the population.
+        list: Selected individuals.
     """
-    if not isinstance(population, np.ndarray) or not isinstance(fitness_values, np.ndarray):
-        raise ValueError("Inputs 'population' and 'fitness_values' must be numpy arrays.")
-    if num_parents <= 0 or num_parents > len(population) or beta <= 0:
-        raise ValueError("Invalid number of parents or selection pressure parameter.")
+    # Calculate beta from the selection pressure
+    a = math.log(selection_pressure) / (lmbda - 1)
+    beta = -1 / a
 
-    # Normalize fitness values to probabilities using softmax
-    max_fit = np.max(fitness_values)
-    exp_values = np.exp(beta * (fitness_values - max_fit))
-    selection_probs = exp_values / np.sum(exp_values)
-    
-    # Perform selection with calculated probabilities
-    selected_indices = np.random.choice(len(population), num_parents, p=selection_probs)
-    selected_parents = population[selected_indices]
+    # Generate random numbers from a truncated exponential distribution
+    X = truncexpon(b=(lmbda) / beta, loc=0, scale=beta)
+    random_numbers = X.rvs(mu)
 
-    return selected_parents
+    # Calculate fitness for each individual in the population
+    pop_fitness = {}
+    for ind in population:
+        pop_fitness[ind] = fitness(distance_matrix , ind)
+
+    # Sort the population by fitness
+    sorted_pop_list = sorted(pop_fitness.items(), key=lambda x: x[1])
+
+    # Use the random numbers as indices to select individuals
+    selected_indices = [int(np.floor(num)) for num in random_numbers]
+    selected_individuals = [sorted_pop_list[i][0] for i in selected_indices]
+
+    return selected_individuals
 
 
 # Number of parents to select
@@ -133,7 +142,4 @@ print("\nRank-Based Selection:")
 print(selected_parents_rank)
 
 # Test Exponential Selection
-beta = 0.2  # Selection pressure parameter
-selected_parents_exp = exponential_selection(initial_population, fitness_values, num_parents, beta)
-print("\nExponential Selection:")
-print(selected_parents_exp)
+# same usage as Jacob's code
