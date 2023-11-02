@@ -32,14 +32,18 @@ class TspProg:
         iterations = params.iterations
         numCities = len(distanceMatrix[0])
 
+        a = 0.99
+        selection_pressure = a
+
         bestInd = Individual(numCities)
         
         ##### GENERATION
-        population = np.empty(mu, dtype = Individual)
         #routes = heuristic_generation(distanceMatrix, lam)
         routes = random_generation(distanceMatrix, lam)
         #routes = parallel_diversification_generation(distanceMatrix, lam)
         #routes = sequential_diversification_generation(distanceMatrix, lam)
+
+        population = np.empty(mu, dtype = Individual)
         for ro, route in enumerate(routes):
             population[ro] = Individual(route=route)
 
@@ -47,8 +51,8 @@ class TspProg:
         minimumHist = []
 
         ##### MUTATION
-        mutation = invMutation
-        #mutation = swapMutation
+        #mutation = invMutation
+        mutation = swapMutation
         #mutation = insertMutation
         #mutation = scrambleMutation
 
@@ -68,9 +72,15 @@ class TspProg:
             if oneOffspring:
                 num_parents = 2*mu
 
-            selected_individuals = exp_selection(distanceMatrix, population, lam, num_parents)
+
+            ##### SELECTION
+            #selected_individuals = exp_selection(distanceMatrix, population, lam, num_parents)
+            selected_individuals = exp_selection(distanceMatrix, population, lam, num_parents, selection_pressure) #Version with geometric decay
             #selected_individuals = k_tournament_selection(distanceMatrix, population, num_parents)
             #selected_individuals = stochastic_universal_sampling(distanceMatrix, population, num_parents)
+
+            #Geometric decay
+            selection_pressure *= a
 
             # Select from the population:
             if oneOffspring: #Recombination resulting in one offspring
@@ -755,5 +765,5 @@ testArray2 = np.array([[0, 1.5, 2.4, 3.4],
                        [np.inf, 3.8, 9.3, 0]])
 testInd = Individual(4)
 prog = TspProg()
-params = Parameters(lambd=500, mu=500, k=5, its=25)
+params = Parameters(lambd=500, mu=500, k=5, its=500)
 prog.optimize("tour50.csv", params, oneOffspring=True)
