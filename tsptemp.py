@@ -55,6 +55,8 @@ class TspProg:
         mutation = swapMutation
         #mutation = insertMutation
         #mutation = scrambleMutation
+        ##### Rishi, yours aren't here, just because they seemed to be the exact same thing but written differently
+
 
         i = 0
         yourConvergenceTestsHere = True
@@ -74,13 +76,13 @@ class TspProg:
 
 
             ##### SELECTION
-            #selected_individuals = exp_selection(distanceMatrix, population, lam, num_parents)
-            selected_individuals = exp_selection(distanceMatrix, population, lam, num_parents, selection_pressure) #Version with geometric decay
+            selected_individuals = exp_selection(distanceMatrix, population, lam, num_parents) #Version WITHOUT geometric decay
+            #selected_individuals = exp_selection(distanceMatrix, population, lam, num_parents, selection_pressure) #Version WITH geometric decay
             #selected_individuals = k_tournament_selection(distanceMatrix, population, num_parents)
             #selected_individuals = stochastic_universal_sampling(distanceMatrix, population, num_parents)
 
             #Geometric decay
-            if i % 3 == 0: #Set how aggressive the decay should be
+            if i % 3 == 0 and a > 0.0001: #Set how aggressive the decay should be
                 selection_pressure *= a
 
             # Select from the population:
