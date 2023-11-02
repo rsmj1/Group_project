@@ -80,7 +80,8 @@ class TspProg:
             #selected_individuals = stochastic_universal_sampling(distanceMatrix, population, num_parents)
 
             #Geometric decay
-            selection_pressure *= a
+            if i % 3 == 0: #Set how aggressive the decay should be
+                selection_pressure *= a
 
             # Select from the population:
             if oneOffspring: #Recombination resulting in one offspring
