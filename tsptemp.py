@@ -51,8 +51,8 @@ class TspProg:
         minimumHist = []
 
         ##### MUTATION
-        #mutation = invMutation
-        mutation = swapMutation
+        mutation = invMutation
+        #mutation = swapMutation
         #mutation = insertMutation
         #mutation = scrambleMutation
         ##### Rishi, yours aren't here, just because they seemed to be the exact same thing but written differently
@@ -78,11 +78,11 @@ class TspProg:
             ##### SELECTION
             selected_individuals = exp_selection(distanceMatrix, population, lam, num_parents) #Version WITHOUT geometric decay
             #selected_individuals = exp_selection(distanceMatrix, population, lam, num_parents, selection_pressure) #Version WITH geometric decay
-            #selected_individuals = k_tournament_selection(distanceMatrix, population, num_parents)
+            #selected_individuals = k_tournament_selection(distanceMatrix, population, num_parents, k)
             #selected_individuals = stochastic_universal_sampling(distanceMatrix, population, num_parents)
 
             #Geometric decay
-            if i % 3 == 0 and a > 0.0001: #Set how aggressive the decay should be
+            if i % 2 == 0 and a > 0.0001: #Set how aggressive the decay should be
                 selection_pressure *= a
 
             # Select from the population:
@@ -97,6 +97,7 @@ class TspProg:
                     #offspring[j] = order_crossover(p1, p2) #TODO: Fix
                     #offspring[j] = cycle_crossover(p1, p2) #TODO: Fix
                     offspring[j] = pmx(p1, p2)
+                    #offspring[j] = tpx(p1, p2)
                     mutation(offspring[j]) #Invmutation generally has worse performance than swap
             else: #Recombination resulting in two offspring
                 for j in range(mu//2):
@@ -131,6 +132,7 @@ class TspProg:
 			#    with city numbering starting from 0
             meanObjective = mean
             bestObjective = minimum
+            bestSolution = population[np.argmin(objectiveValues)].route
             timeLeft = self.reporter.report(meanObjective, bestObjective, bestSolution)
 			#print("hello", timeLeft)
             if i >= iterations:
@@ -159,7 +161,7 @@ class Individual:
     #self adaptivity parameter
     if alpha is None:
       #self.alpha = max(0.05, 0.1 + 0.05*np.random.normal()) # max(0.05, 0.1 + ~N(0, 0.05^2))
-      self.alpha = 0.2
+      self.alpha = 0.5
     else:
       self.alpha = alpha
 
@@ -243,17 +245,36 @@ def insertMutation(individual):
 
 ######################### RECOMBINATIONS ###############################
 
-#Placeholder function that does nothing
+#Ordered two-point crossover for permutations
 def tpx(parent1, parent2):
-    i = np.random.randint(0,len(parent1.route)-1)
-    j = np.random.randint(i+1,len(parent1.route)) 
-    route1 = np.ndarray.copy(parent1.route)
-    route2 = np.ndarray.copy(parent2.route)
-    temp = np.ndarray.copy(route1[i:j])
-    route1[i:j] = np.ndarray.copy(route2[i:j])
-    route2[i:j] = temp
+    p1 = parent1.route
+    p2 = parent2.route
+    
+    n = len(p1)
+    i = np.random.randint(0,n-1)
+    j = np.random.randint(i+1,n) 
+    #print("i,j:", i, j)
+    #print("ii:", "[0 1 2 3 4 5 6 7 8 9]")
+    #print("p1:", p1)
+    #print("p2:", p2)
+
+    route1 = np.empty(n, dtype = int)
+    route1[0:i] = p1[0:i]
+    route1[j:n] = p1[j:n]
+    set1 = set(p1[i:j])
+    #print("newRoute before:", route1)
+    #print("set1:", set1)
+    c = 0
+    currSlot = i
+    while len(set1) != 0:
+        if p2[c] in set1:
+            route1[currSlot] = p2[c]
+            set1.remove(p2[c])
+            currSlot += 1
+        c += 1
+    #print("newRoute after:", route1)
     alpha = combineAlphas(parent1.alpha, parent2.alpha)
-    return Individual(route=route1, alpha=alpha), Individual(route=route2, alpha=alpha)
+    return Individual(route=route1, alpha=alpha)
 
 def partially_mapped_crossover(parent1, parent2):
     """
@@ -552,7 +573,7 @@ def heuristic_generation(distance_matrix, lam):
                 current_city = nearest_city
                 unvisited_cities.remove(current_city)
 
-            initial_population.append(tour)
+            initial_population.append(np.array(tour))
         return initial_population
 
 def random_generation(distance_matrix, lam, random_seed=None):
@@ -573,7 +594,7 @@ def random_generation(distance_matrix, lam, random_seed=None):
         for _ in range(lam):
             tour = list(range(num_cities))
             random.shuffle(tour)  # Create a random permutation
-            initial_population.append(tour)
+            initial_population.append(np.array(tour))
         return initial_population
 
 
@@ -674,7 +695,7 @@ def stochastic_universal_sampling(distance_matrix, population, num_parents):
 
     return np.array(selected_parents)
 
-def exp_selection(dmatrix, pop, l, mu, selection_pressure=0.0001):
+def exp_selection(dmatrix, pop, l, mu, selection_pressure=0.01):
     # Create the distribution:
     a = math.log(selection_pressure)/(l-1)
     beta = -1/a
@@ -766,7 +787,10 @@ testArray2 = np.array([[0, 1.5, 2.4, 3.4],
                        [2.8, 0, np.inf, 1.3],
 					   [10., 5.4, 0, 9.5],
                        [np.inf, 3.8, 9.3, 0]])
-testInd = Individual(4)
+testInd = Individual(10)
+testInd2 = Individual(10)
+
+#tpx(testInd, testInd2)
 prog = TspProg()
-params = Parameters(lambd=500, mu=500, k=5, its=500)
+params = Parameters(lambd=2000, mu=2000, k=5, its=500)
 prog.optimize("tour50.csv", params, oneOffspring=True)
