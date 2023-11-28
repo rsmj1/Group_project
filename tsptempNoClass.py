@@ -4,6 +4,8 @@ import random
 from scipy.stats import truncexpon
 import math
 import matplotlib.pyplot as plt
+import time
+import numba as nb
 
 # Modify the class name to match your student number.
 class TspProg:
@@ -31,21 +33,24 @@ class TspProg:
         k = params.k    #K-tournament selection param  
         iterations = params.iterations
         numCities = len(distanceMatrix[0])
-
+        alpha = 0.2
         a = 0.9
         selection_pressure = a
 
-        bestInd = Individual(numCities)
+        bestInd = np.random.permutation(numCities)
         
         ##### GENERATION
-        #routes = heuristic_generation(distanceMatrix, lam)
-        routes = random_generation(distanceMatrix, lam)
+        
+        s1 = time.time()
+        population = heuristic_generation(distanceMatrix, lam)
+        e1 = time.time()
+        s2 = time.time()
+        #population = random_generation(distanceMatrix, lam)
+        population = nn_krandom_generation(distanceMatrix, lam)
+        e2 = time.time()
+        print("t1:", e1-s1, "t2:", e2-s2)
         #routes = parallel_diversification_generation(distanceMatrix, lam)
         #routes = sequential_diversification_generation(distanceMatrix, lam)
-
-        population = np.empty(mu, dtype = Individual)
-        for ro, route in enumerate(routes):
-            population[ro] = Individual(route=route)
 
         meanHist = []
         minimumHist = []
@@ -55,7 +60,6 @@ class TspProg:
         #mutation = swapMutation
         #mutation = insertMutation
         #mutation = scrambleMutation
-        ##### Rishi, yours aren't here, just because they seemed to be the exact same thing but written differently
 
 
         i = 0
@@ -68,7 +72,7 @@ class TspProg:
 			# Your code here.
 
 			#Create offspring
-            offspring = np.empty(mu, dtype = Individual)
+            offspring = np.empty((mu, numCities), dtype = int)
 
             num_parents = mu
             if oneOffspring:
@@ -94,11 +98,8 @@ class TspProg:
                     #offspring[j] = edge_crossover(p1, p2)
                     #offspring[j] = recursive_fill(p1, p2)
                     #offspring[j] = partially_mapped_crossover(p1, p2)
-                    #offspring[j] = order_crossover(p1, p2) #TODO: Fix
-                    #offspring[j] = cycle_crossover(p1, p2) #TODO: Fix
-                    offspring[j] = pmx(p1, p2)
-                    #offspring[j] = tpx(p1, p2)
-                    mutation(offspring[j]) #Invmutation generally has worse performance than swap
+                    offspring[j] = pmx(p1, p2, alpha, alpha)
+                    #offspring[j] = tpx(p1, p2, alpha, alpha)
             else: #Recombination resulting in two offspring
                 for j in range(mu//2):
                     p1 = selected_individuals[2*j]
@@ -107,23 +108,23 @@ class TspProg:
                     res = tpx(p1, p2)
                     offspring[j*2] = res[0]
                     offspring[j*2+1] = res[1]
-                    mutation(offspring[j*2]) #Invmutation generally has worse performance than swap
-                    mutation(offspring[j*2+1]) #Invmutation generally has worse performance than swap
+                    mutation(offspring[j*2], alpha) #Invmutation generally has worse performance than swap
+                    mutation(offspring[j*2+1], alpha) #Invmutation generally has worse performance than swap
 
-            
-            for elem in population:
-                mutation(elem)
+            mutation(offspring, alpha)
+            mutation(population, alpha)
+
 
 			##### ELIMINATION
             population = elimination(distanceMatrix, population, offspring, lam)
 
 			##### EVALUATION
-            objectiveValues = np.array([fitness(distanceMatrix, ind) for ind in population])
+            objectiveValues = np.array([fitness(ind, distanceMatrix) for ind in population])
             mean = np.mean(objectiveValues)
             minimum = np.min(objectiveValues)
             meanHist.append(mean)
             minimumHist.append(minimum)
-            print("Iteration: ", i, ", Mean fitness:", mean, " Min fitness:", minimum, "Mean mutation rate:", np.mean(np.array([ind.alpha for ind in population])))
+            print("Iteration: ", i, ", Mean fitness:", mean, " Min fitness:", minimum, "Mean mutation rate:", alpha)
             i += 1
 
 			# Call the reporter with:
@@ -133,7 +134,7 @@ class TspProg:
 			#    with city numbering starting from 0
             meanObjective = mean
             bestObjective = minimum
-            bestSolution = population[np.argmin(objectiveValues)].route
+            bestSolution = population[np.argmin(objectiveValues)]
             timeLeft = self.reporter.report(meanObjective, bestObjective, bestSolution)
 			#print("hello", timeLeft)
             if i >= iterations:
@@ -174,41 +175,45 @@ class Parameters:
     self.iterations = its
 
 
-def fitness(dmatrix, individual):
+def fitness(individual, dmatrix):
 	distance = 0
 	n = len(dmatrix[0])
-	route = individual.route
-	#print("Route length:", len(route))
+	individual
 	for i in range(0,n-1):
-		distance += dmatrix[route[i], route[i+1]]  
-	distance += dmatrix[route[n-1], route[0]]      
+		distance += dmatrix[individual[i], individual[i+1]]  
+	distance += dmatrix[individual[n-1], individual[0]]      
 	return distance
 
 
 ####################### MUTATIONS #############################
 
 #Mutate inplace, so returns nothing - INVERSION MUTATION (also called (R)reverse (S)equence (M)utation)
-def invMutation(individual):
-  #Mutate with probability prob from the individual
-  if np.random.uniform() < individual.alpha:
-    i = np.random.randint(0,len(individual.route)-1)
-    j = np.random.randint(i+1,len(individual.route))
-    #individual.route[i:j] = individual.route[i:j][::-1]
-    individual.route[i:j] = np.flip(individual.route[i:j])
+@nb.njit()
+def invMutation(inds, a):
+    for k in range(inds.shape[0]):
+        if np.random.uniform() < a:
+            i = np.random.randint(0,len(inds[k])-1)
+            j = np.random.randint(i+1,len(inds[k]))
+            #individual.route[i:j] = individual.route[i:j][::-1]
+            inds[k][i:j] = np.flip(inds[k][i:j])
+
+
 
 
 
 #Mutate inplace, so returns nothing - SWAP MUTATION
-def swapMutation(individual):
+@nb.njit()
+def swapMutation(inds, a):
   #Mutate with probability prob from the individual
-  if np.random.uniform() < individual.alpha:
-    i = np.random.randint(0,len(individual.route))
-    j = np.random.randint(0,len(individual.route))
-    tmp = individual.route[i]
-    individual.route[i] = individual.route[j]
-    individual.route[j] = tmp
+  for k in range(inds.shape[0]):
+    if np.random.uniform() < a:
+        i = np.random.randint(0,len(inds[k]))
+        j = np.random.randint(0,len(inds[k]))
+        tmp = inds[k][i]
+        inds[k][i] = inds[k][j]
+        inds[k][j] = tmp
 
-def scrambleMutation(individual):
+def scrambleMutation(inds, a):
     """
     Apply Scramble Mutation to an individual in-place.
 
@@ -217,14 +222,15 @@ def scrambleMutation(individual):
 
     This function mutates the individual in-place, so it returns nothing.
     """
-    if np.random.uniform() < individual.alpha:
-        i = np.random.randint(0, len(individual.route))
-        j = np.random.randint(i + 1, len(individual.route))
-        segment = individual.route[i:j]
-        np.random.shuffle(segment)
-        individual.route[i:j] = segment
+    for k in range(inds.shape[0]):
+        if np.random.uniform() < a:
+            i = np.random.randint(0, len(inds[k]))
+            j = np.random.randint(i + 1, len(inds[k]))
+            segment = inds[k][i:j]
+            np.random.shuffle(segment)
+            inds[k][i:j] = segment
 
-def insertMutation(individual):
+def insertMutation(inds, a):
     """
     Apply Insert Mutation to an individual in-place.
 
@@ -233,24 +239,22 @@ def insertMutation(individual):
 
     This function mutates the individual in-place, so it returns nothing.
     """
-    if np.random.uniform() < individual.alpha:
-        i = np.random.randint(0, len(individual.route))
-        j = np.random.randint(0, len(individual.route))
-        gene = individual.route[i]
-        individual.route = np.insert(individual.route, j, gene)
-        if j <= i:
-            i += 1
-        individual.route = np.delete(individual.route, i)
+    for k in range(inds.shape[0]):
+        if np.random.uniform() < a:
+            i = np.random.randint(0, len(inds[k]))
+            j = np.random.randint(0, len(inds[k]))
+            gene = inds[k][i]
+            inds[k] = np.insert(inds[k], j, gene)
+            if j <= i:
+                i += 1
+            inds[k] = np.delete(inds[k], i)
 
 
 
 ######################### RECOMBINATIONS ###############################
 
 #Ordered two-point crossover for permutations
-def tpx(parent1, parent2):
-    p1 = parent1.route
-    p2 = parent2.route
-    
+def tpx(p1, p2, a1, a2):
     n = len(p1)
     i = np.random.randint(0,n-1)
     j = np.random.randint(i+1,n) 
@@ -274,66 +278,9 @@ def tpx(parent1, parent2):
             currSlot += 1
         c += 1
     #print("newRoute after:", route1)
-    alpha = combineAlphas(parent1.alpha, parent2.alpha)
-    return Individual(route=route1, alpha=alpha)
+    alpha = combineAlphas(a1, a2)
+    return route1
 
-def partially_mapped_crossover(parent1, parent2):
-    """
-    Perform Partially Mapped Crossover (PMX) on two individuals.
-
-    Args:
-        parent1 (Individual): The first parent individual.
-        parent2 (Individual): The second parent individual.
-
-    Returns:
-        Individual: A new individual created through PMX.
-    """
-    candidate1 = list(parent1.route)
-    candidate2 = list(parent2.route)
-    if len(candidate1) != len(candidate2):
-        print('Candidate solutions must have the same length')
-        return 0
-
-    length = len(candidate1)
-    index_set = set()
-    full_set = set(range(length))
-
-    # Choose our crossover points:
-    my_range = np.random.choice(length, 2, False)
-    a = min(my_range)
-    b = max(my_range)
-
-    for j in range(a, b):
-        index_set.add(j)
-
-    # Initialize an empty offspring:
-    offspring = [None] * (length - 1)
-
-    if a > b:
-        middle_section1 = candidate1[b:a + 1]
-        middle_section2 = candidate2[b:a + 1]
-
-        offspring[b:a] = middle_section1
-        for j in range(b, a + 1):
-            index_set.add(j)
-    elif b > a:
-        middle_section1 = candidate1[a:b + 1]
-        middle_section2 = candidate2[a:b + 1]
-
-        offspring[a:b] = middle_section1
-        for j in range(a, b):
-            index_set.add(j + 1)
-
-    for count, item in enumerate(middle_section2):
-        if item not in set(middle_section1):
-            item2 = middle_section1[count]
-            index = candidate2.index(item2)
-            recursive_fill(index, index_set, item, offspring, candidate2)
-
-    for final_item in full_set ^ index_set:
-        offspring[final_item] = candidate2[final_item]
-
-    return Individual(route=np.array(offspring), alpha=combineAlphas(parent1.alpha, parent2.alpha))
 
 def recursive_fill(index, index_set, item, offspring, candidate):
     if index not in index_set:
@@ -387,113 +334,11 @@ def edge_crossover(parent1, parent2):
     return Individual(route=np.array(child), alpha=combineAlphas(parent1.alpha, parent2.alpha))
 
 
-#TODO: Fix
-def order_crossover(self, crossover_rate=0.9):
-        """
-        Apply Order Crossover (OX1) to pairs of chromosomes.
-
-        Parameters:
-        - crossover_rate: The probability of applying crossover to a pair.
-
-        Returns:
-        A new population resulting from OX1.
-        """
-        new_population = []
-
-        def order_crossover_single(parent1, parent2):
-            if random.random() > crossover_rate:
-                return parent1, parent2
-
-            length = len(parent1)
-            cut1, cut2 = sorted(random.sample(range(length), 2))
-
-            child1 = [-1] * length
-            child2 = [-1] * length
-
-            # Copy the segment between the cuts directly
-            child1[cut1:cut2] = parent1[cut1:cut2]
-            child2[cut1:cut2] = parent2[cut1:cut2]
-
-            # Map the rest of the genes
-            pointer1, pointer2 = cut2, cut2
-            for i in range(cut2, cut2 + length):
-                i %= length
-                if parent2[i] not in child1:
-                    child1[pointer1] = parent2[i]
-                    pointer1 += 1
-                if parent1[i] not in child2:
-                    child2[pointer2] = parent1[i]
-                    pointer2 += 1
-
-            return child1, child2
-
-        for i in range(0, len(self.population), 2):
-            child1, child2 = order_crossover_single(self.population[i], self.population[i + 1])
-            new_population.extend([child1, child2])
-
-        return new_population
-
-
-#TODO: Fix
-def cycle_crossover(self, crossover_rate=0.9):
-        """
-        Apply Cycle Crossover to pairs of chromosomes.
-
-        Parameters:
-        - crossover_rate: The probability of applying crossover to a pair.
-
-        Returns:
-        A new population resulting from Cycle Crossover.
-        """
-        new_population = []
-
-        def cycle_crossover_single(parent1, parent2):
-            if random.random() > crossover_rate:
-                return parent1, parent2
-
-            length = len(parent1)
-            child1 = [-1] * length
-            child2 = [-1] * length
-
-            # Initialize a list to keep track of visited indices
-            visited = [False] * length
-            cycles = []
-
-            for i in range(length):
-                if not visited[i]:
-                    cycle = []
-                    j = i
-                    while True:
-                        cycle.append(j)
-                        visited[j] = True
-                        j = parent2.index(parent1[j])
-                        if j == i:
-                            break
-                    cycles.append(cycle)
-
-            for i, cycle in enumerate(cycles):
-                if i % 2 == 0:
-                    for j in cycle:
-                        child1[j] = parent1[j]
-                        child2[j] = parent2[j]
-                else:
-                    for j in cycle:
-                        child1[j] = parent2[j]
-                        child2[j] = parent1[j]
-
-            return child1, child2
-
-        for i in range(0, len(self.population), 2):
-            child1, child2 = cycle_crossover_single(self.population[i], self.population[i + 1])
-            new_population.extend([child1, child2])
-
-        return new_population
-
 
 ### PMX ###
-def pmx(candidate11, candidate22):
-    candidate1 = list(candidate11.route)
-    candidate2 = list(candidate22.route)
+def pmx(candidate11, candidate22, a1, a2):
+    candidate1 = list(candidate11)
+    candidate2 = list(candidate22)
     if len(candidate1) != len(candidate2):
         print('Candidate solutions must have same length')
         return 0
@@ -541,7 +386,7 @@ def pmx(candidate11, candidate22):
     for final_item in full_set^index_set:
         offspring[final_item] = candidate2[final_item]
 
-    return Individual(route = np.array(offspring), alpha=combineAlphas(candidate11.alpha, candidate22.alpha))
+    return np.array(offspring)
 ### END PMX
 
 ########################### Population Generation ######################################
@@ -567,65 +412,61 @@ def heuristic_generation(distance_matrix, lam):
                 unvisited_cities.remove(current_city)
 
             initial_population.append(np.array(tour))
-        return initial_population
-
-def random_generation(distance_matrix, lam, random_seed=None):
-        """
-        Generate an initial population using random permutations of cities.
-
-        Parameters:
-        - random_seed: An optional random seed for reproducibility.
-
-        Returns:
-        A list of tours, each represented as a random permutation of cities.
-        """
-        if random_seed is not None:
-            random.seed(random_seed)
-        num_cities = len(distance_matrix[0])
-
-        initial_population = []
-        for _ in range(lam):
-            tour = list(range(num_cities))
-            random.shuffle(tour)  # Create a random permutation
-            initial_population.append(np.array(tour))
-        return initial_population
+        return np.array(initial_population)
 
 
-def sequential_diversification_generation(distance_matrix, lam):
-    """
-    Generate an initial population using sequential diversification.
 
-    Returns:
-    A list of tours, each created by starting with a different city and sequentially visiting the rest.
-    """
-    initial_population = []
+########################### Population Generation ######################################
+#Inserts 10% random cities in random positions (except first random element in position 0), before filling the rest with NN
+def nn_krandom_generation(distance_matrix, lam):
     num_cities = len(distance_matrix[0])
-
-    for start_city in range(num_cities):
-        tour = [start_city] + [city for city in range(num_cities) if city != start_city]
-        initial_population.append(tour[:])
-    return initial_population
-
-def parallel_diversification_generation(distance_matrix, lam):
-    """
-    Generate an initial population using parallel diversification.
-
-    Returns:
-    A list of tours, each created by shuffling the order of cities to create diversity.
-    """
     initial_population = []
-    num_cities = len(distance_matrix[0])
-
+    num_init = num_cities // 10
     for _ in range(lam):
-        tour = list(range(num_cities))
-        random.shuffle(tour)
-        initial_population.append(tour)
-    return initial_population
+        initial_cities = random.sample(range(num_cities), num_init)
+        initial_positions = random.sample(range(1, num_cities), num_init-1)
+        unvisited_cities = [j for j in range(num_cities) if j not in initial_cities]
+        tour = np.full(num_cities, -1)
+        tour[0] = initial_cities[0]   
+        tour[initial_positions] = initial_cities[1:]
+        for i in range(1, num_cities):
+            if tour[i] != -1:
+                continue
+            #print(i, "unvisited cities", unvisited_cities)
+            nearest_city = min(unvisited_cities, key=lambda city: distance_matrix[tour[i-1]][city])
+            tour[i] = nearest_city
+            unvisited_cities.remove(tour[i])
+        # if not check_perm(tour):
+        #     print("Not working...")
+        #     print("The tour:", np.sort(tour))
+        initial_population.append(np.array(tour))
+    return np.array(initial_population)
+
+
+def check_perm(array):
+    list_array = array.tolist()
+    set_array = set(list_array)
+    if len(list_array) != len(set_array):
+        return False
+    if max(list_array) != len(list_array) - 1:
+        return False
+    if min(list_array) != 0:
+        return False
+    return True
+
+#Updated version
+def random_generation(distance_matrix, lam):
+    num_cities = len(distance_matrix[0])
+    inital_population = np.empty((lam, num_cities), dtype=int)
+    for i in range(lam):
+        tour = np.random.permutation(num_cities)
+        inital_population[i,:] = tour
+    return inital_population
+
 
 
 
 ########################### Selection ################################
-
 def k_tournament_selection(distance_matrix, population, num_parents, k=5):
     """
     Perform K-Tournament Selection to select parents from the population.
@@ -639,12 +480,8 @@ def k_tournament_selection(distance_matrix, population, num_parents, k=5):
     Returns:
         numpy.ndarray: An array of selected parents from the population.
     """
-    if not isinstance(population, np.ndarray):
-        raise ValueError("Inputs 'population' must be numpy arrays.")
-    if num_parents <= 0 or num_parents > 2*len(population) or k <= 0:
-        raise ValueError("Invalid number of parents or tournament size.")
 
-    fitness_values = np.array([fitness(distance_matrix, ind) for ind in population])
+    fitness_values = np.array([fitness(ind, distance_matrix) for ind in population])
 
     selected_parents = []
     for _ in range(num_parents):
@@ -688,23 +525,18 @@ def stochastic_universal_sampling(distance_matrix, population, num_parents):
 
     return np.array(selected_parents)
 
+
 def exp_selection(dmatrix, pop, l, mu, selection_pressure=0.01):
     # Create the distribution:
     a = math.log(selection_pressure)/(l-1)
     beta = -1/a
     X = truncexpon(b=(l)/beta, loc=0, scale=beta)
     data = X.rvs(mu)
-
-    pop_dict = {}
-
-    for ind in pop:
-        pop_dict[ind] = fitness(dmatrix,ind)
-
-    sorted_pop_list = sorted(pop_dict.items(), key=lambda x:x[1])
-
     index = [int(a) for a in np.floor(data)]
-
-    output = [sorted_pop_list[i][0] for i in index]
+    
+    pop_fitness = np.apply_along_axis(fitness, 1, pop, dmatrix=dmatrix)
+    order = np.argsort(pop_fitness)
+    output = np.array([pop[order[i]] for i in index])
 
     return output
 
@@ -714,14 +546,11 @@ def exp_selection(dmatrix, pop, l, mu, selection_pressure=0.01):
 
 #lambda + mu elimination
 def elimination(dmatrix, pop, offspring, l):
-    combination = np.append(pop, offspring)
-	#print('Combo: ',combination)
-    pred = np.array([fitness(dmatrix, x) for x in combination])
-	#print("Pred:", pred)
+    combination = np.vstack((pop, offspring))
+    pred = np.array([fitness(x, dmatrix) for x in combination])
     ordering = np.argsort(pred)
-	#print("Ordering:", ordering)
     choices = combination[ordering][:l]
-	#print("Choices:", choices)
+
     return choices
 
 
@@ -782,6 +611,27 @@ testArray2 = np.array([[0, 1.5, 2.4, 3.4],
                        [np.inf, 3.8, 9.3, 0]])
 testInd = Individual(10)
 testInd2 = Individual(10)
+
+
+# testL = 5000
+# testM = 2500
+# file = open("tour50.csv")
+# distanceMatrix = np.loadtxt(file, delimiter=",")
+# #distanceMatrix[distanceMatrix==np.inf] = 0
+# file.close()
+# nn_krandom_generation(distanceMatrix, 1000)
+# testPop = random_generation(distanceMatrix, testL)
+# testOff = random_generation(distanceMatrix, testL)
+# testPop2 = np.empty(testL, dtype = Individual)
+# testOff2 = np.empty(testL, dtype = Individual)
+# for ro, route in enumerate(testPop):
+#         testPop2[ro] = Individual(route=route)
+# for ro1, route1 in enumerate(testOff):
+#         testOff2[ro1] = Individual(route=route1)
+
+#testArray = np.array([1,2,3,4,5,6,7,8])
+#testIndex = [2,2,3,4,5]
+#print("Indexing:", testArray[testIndex])
 
 #tpx(testInd, testInd2)
 prog = TspProg()

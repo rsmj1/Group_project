@@ -1,3 +1,4 @@
+import copy
 import numpy as np
 import random
 import time
@@ -75,6 +76,46 @@ def mutation(individual):
     individual.order[i] = individual.order[j]
     individual.order[j] = tmp    
 
+#Basic local search operator that takes element i and puts to the front, shifting all the other elements before it to the right
+def basicLso(sack, individual):
+  n = len(individual.order)
+  bestFit = fitness(sack, individual)
+  bestInd = copy.deepcopy(individual)
+  currInd = copy.deepcopy(individual)
+  for i in range(1, n):
+    #Insert object i into first position
+    currInd.order[0] = individual.order[i]
+    currInd.order[1:i+1] = individual.order[0:i]
+    currInd.order[i+1:n] = individual.order[i+1:n]
+    fit = fitness(sack, currInd)
+    if fit > bestFit:
+      bestFit = fit
+      bestInd.order = copy.copy(currInd.order)
+  individual.order = copy.copy(bestInd.order)
+
+
+def advLso(sack, individual):
+  n = len(individual.order)
+  bestFit = fitness(sack, individual)
+  bestInd = copy.deepcopy(individual)
+  currInd = copy.deepcopy(individual)
+  for i in range(1, n):
+    for j in range(i+1, n):
+      #swap pos i and j
+      currInd.order[i] = individual.order[j]
+      currInd.order[j] = individual.order[i]
+      #Insert object i into first position
+      fit = fitness(sack, currInd)
+      if fit > bestFit:
+        bestFit = fit
+        bestInd.order = copy.copy(currInd.order)
+      #unswap for next iteration
+      currInd.order[i] = individual.order[i]
+      currInd.order[j] = individual.order[j]
+  individual.order = copy.copy(bestInd.order)
+
+
+
 #Note that since we are working with permutations, one has to be careful when combining, that we still get a proper permutation out
 def recombination(sack, p1, p2):
   #Subset based recombination
@@ -150,7 +191,8 @@ def knapsackAlgo(sack, p):
     #Mutation
     for elem in population:
       mutation(elem)
-
+      #Could also switch the order here - when the LSO is extensive you would usually put it first, the mutation is there to ensure the randomness
+      advLso(sack, elem)
     #Elimination
     population = elimination(sack, population, offspring, p.la)
 
@@ -161,6 +203,40 @@ def knapsackAlgo(sack, p):
 
   return None
 
+
+
+def knapsackAlgoNoLso(sack, p):
+  numObjects = len(sack.values)
+
+  #Initial population
+  population = initPopulation(numObjects, p.la)
+
+  #Main loop
+  maxIter = p.its
+  for i in range(maxIter):
+    
+    offspring = np.empty(p.mu, dtype = Individual)
+    #Recombination (D' X D' -> D')
+    for j in range(p.mu):
+      p1 = selection(sack, population, p.k)
+      p2 = selection(sack, population, p.k)
+      offspring[j] = recombination(sack, p1, p2)
+      mutation(offspring[j])
+
+    #Mutation
+    for elem in population:
+      mutation(elem)
+      #Could also switch the order here - when the LSO is extensive you would usually put it first, the mutation is there to ensure the randomness
+      #basicLso(sack, elem)
+    #Elimination
+    population = elimination(sack, population, offspring, p.la)
+
+    #Evaluation
+    objectiveValues = np.array([fitness(sack, ind) for ind in population])
+    print("Iteration: ", i, ", Mean fitness:", np.mean(objectiveValues), " Max fitness:", np.max(objectiveValues))
+    
+
+  return None
 
 def initPopulation(numObjects, popSize):
   return np.array([Individual(numObjects) for i in range(popSize)])
@@ -177,10 +253,11 @@ def printPopulation(pop, sack = None):
 
 #val = 2**np.random.randn(10)
 #print(val)
-size = 1000
+size = 50
 
 sack = KnapSack(size)
 params = Parameters(100, 100, 5, 25)
+
 
 print("Problem instance:")
 print("Capacity:", sack.capacity)
@@ -188,8 +265,13 @@ print("Values:", sack.values)
 print("Weights", sack.weights)
 print("-----------------------------------")
 
-knapsackAlgo(sack, params)
+#testInd = Individual(10)
+#print("ind before:", testInd.order)
+#basicLso(sack, testInd)
+#print("ind after :", testInd.order)
 
+knapsackAlgo(sack, params)
+#knapsackAlgoNoLso(sack, params)
 
 
 #ind = Individual(size)
