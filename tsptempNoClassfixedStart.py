@@ -128,27 +128,12 @@ class TspProg:
                 break
             
         print("Route of best individual:")
-        printIndividual(bestInd, distanceMatrix)
+        printIndividual(bestInd, a, distanceMatrix)
         print("Final mean:", meanHist[len(meanHist)-1], ", Final best:", minimumHist[len(minimumHist)-1])
         plotResuts(meanHist, minimumHist)
 		# Your code here.
         return 0
 
-
-class Individual:
-  #Individuals from the population for the algorithm
-  #Each will be initialized randomly and represent a permutation of cities in the TSP problem
-  def __init__(self, numCities = None, route = None, alpha = None):
-    if route is None:
-      self.route = np.random.permutation(numCities)
-    else:
-      self.route = route
-    #self adaptivity parameter
-    if alpha is None:
-      #self.alpha = max(0.05, 0.1 + 0.05*np.random.normal()) # max(0.05, 0.1 + ~N(0, 0.05^2))
-      self.alpha = 0.2
-    else:
-      self.alpha = alpha
 
 class Parameters:
   def __init__(self, lambd, mu, k, its):
@@ -192,7 +177,7 @@ def ham_dist(x):
 def invMutation(inds, a):
     for k in range(inds.shape[0]):
         if np.random.uniform() < a:
-            i = np.random.randint(0,len(inds[k])-1)
+            i = np.random.randint(1,len(inds[k])-1)
             j = np.random.randint(i+1,len(inds[k]))
             #individual.route[i:j] = individual.route[i:j][::-1]
             inds[k][i:j] = np.flip(inds[k][i:j])
@@ -348,9 +333,9 @@ def pmx(candidate11, candidate22, a1, a2):
     full_set = set(range(length))
 
     # Choose our crossover points:
-    my_range = np.random.choice(length,(2),False)
-    a = my_range[0]
-    b = my_range[1]
+    my_range = np.random.choice(length-1,(2),False)
+    a = my_range[0]+1
+    b = my_range[1]+1
 
     #print(a,b)
     for j in range(a,b):
@@ -423,22 +408,19 @@ def nn_krandom_generation(distance_matrix, lam):
     initial_population = []
     num_init = num_cities // 10
     for _ in range(lam):
-        initial_cities = random.sample(range(num_cities), num_init)
-        initial_positions = random.sample(range(1, num_cities), num_init-1)
+        initial_cities = random.sample(range(1, num_cities), num_init)
+        initial_positions = random.sample(range(1, num_cities), num_init)
         unvisited_cities = [j for j in range(num_cities) if j not in initial_cities]
+        unvisited_cities.remove(0)
         tour = np.full(num_cities, -1)
-        tour[0] = initial_cities[0]   
-        tour[initial_positions] = initial_cities[1:]
+        tour[0] = 0  
+        tour[initial_positions] = initial_cities
         for i in range(1, num_cities):
             if tour[i] != -1:
                 continue
-            #print(i, "unvisited cities", unvisited_cities)
             nearest_city = min(unvisited_cities, key=lambda city: distance_matrix[tour[i-1]][city])
             tour[i] = nearest_city
             unvisited_cities.remove(tour[i])
-        # if not check_perm(tour):
-        #     print("Not working...")
-        #     print("The tour:", np.sort(tour))
         initial_population.append(np.array(tour))
     return np.array(initial_population)
 
@@ -459,8 +441,11 @@ def random_generation(distance_matrix, lam):
     num_cities = len(distance_matrix[0])
     inital_population = np.empty((lam, num_cities), dtype=int)
     for i in range(lam):
-        tour = np.random.permutation(num_cities)
-        inital_population[i,:] = tour
+        tour = np.random.permutation(num_cities-1) + 1
+        inital_population[i,0] = 0
+        inital_population[i,1:] = tour
+    print("Initial pop:")
+    print(inital_population)
     return inital_population
 
 
@@ -575,9 +560,9 @@ def combineAlphas(a1, a2):
 def solutionToCycle(path):
     return []
 
-def printIndividual(ind, dmatrix = None):
-    route = ind.route
-    alpha = ind.alpha
+def printIndividual(ind,alpha, dmatrix = None):
+    route = ind
+    alpha = alpha
 	#print("Alpha: ", alpha)
     print("Route: ", end="")
     if dmatrix is None:
@@ -588,11 +573,11 @@ def printIndividual(ind, dmatrix = None):
             print(route[i], "->", route[i+1], "(", dmatrix[route[i], route[i+1]],")", end="|")
         print(route[len(route)-1], "->", route[0], "(", dmatrix[route[len(route)-1], route[0]],")")
 
-def printPopulation(pop, dmatrix):
+def printPopulation(pop, a, dmatrix):
      print("Printing population of size ", len(pop))
      for i, ind in enumerate(pop):
           print(i, end= ":")
-          printIndividual(ind, dmatrix)
+          printIndividual(ind, a, dmatrix)
           print("Fitness:", fitness(dmatrix, ind))
 
 def plotResuts(mean, min):
@@ -617,8 +602,7 @@ testArray2 = np.array([[0, 1.5, 2.4, 3.4],
                        [2.8, 0, np.inf, 1.3],
 					   [10., 5.4, 0, 9.5],
                        [np.inf, 3.8, 9.3, 0]])
-testInd = Individual(10)
-testInd2 = Individual(10)
+
 
 
 # testL = 5000
@@ -640,8 +624,15 @@ testInd2 = Individual(10)
 #testArray = np.array([1,2,3,4,5,6,7,8])
 #testIndex = [2,2,3,4,5]
 #print("Indexing:", testArray[testIndex])
+#tester = np.zeros((10,10))
+#random_generation(tester, 5)
 
 #tpx(testInd, testInd2)
+
+#a = np.array([0,1,2,3,4,5])
+#b = np.array([0,3,1,5,4,2])
+#res = pmx(a,b,0,0)
+#print("res:", res)
 prog = TspProg()
-params = Parameters(lambd=1000, mu=1000, k=5, its=2000)
+params = Parameters(lambd=1000, mu=1000, k=5, its=200)
 prog.optimize("tour50.csv", params)
