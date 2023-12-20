@@ -26,7 +26,7 @@ class TspProg:
         if testFile is not None:
             distanceMatrix = testFile
 
-        print("Distance Matrix: \n", distanceMatrix)
+        #print("Distance Matrix: \n", distanceMatrix)
 		#Parameters
         lam = params.la #Population size
         mu = params.mu  #Offspring size  
@@ -41,11 +41,15 @@ class TspProg:
         
         ##### GENERATION
         
-       
+        start = time.time()
+        
         #population = random_generation(distanceMatrix, lam)
         population = nn_krandom_generation(distanceMatrix, lam)
         #routes = parallel_diversification_generation(distanceMatrix, lam)
         #routes = sequential_diversification_generation(distanceMatrix, lam)
+
+        end = time.time()
+        print("Time:", end - start)
 
         meanHist = []
         minimumHist = []
@@ -59,7 +63,7 @@ class TspProg:
 
         i = 0
         yourConvergenceTestsHere = True
-        while( yourConvergenceTestsHere ):
+        while(yourConvergenceTestsHere):
             meanObjective = 0.0
             bestObjective = 0.0
             bestSolution = np.array([1,2,3,4,5])
@@ -70,7 +74,6 @@ class TspProg:
             offspring = np.empty((mu, numCities), dtype = int)
 
             num_parents = 2*mu
-
 
 
             ##### SELECTION
@@ -417,30 +420,46 @@ def heuristic_generation(distance_matrix, lam):
 
 
 ########################### Population Generation ######################################
-#Inserts 10% random cities in random positions (except first random element in position 0), before filling the rest with NN
+#Inserts (number of cities / choice) * 100 % random cities in random positions (except first random element in position 0), before filling the rest with NN
 def nn_krandom_generation(distance_matrix, lam):
     num_cities = len(distance_matrix[0])
-    initial_population = []
-    num_init = num_cities // 10
-    for _ in range(lam):
-        initial_cities = random.sample(range(num_cities), num_init)
-        initial_positions = random.sample(range(1, num_cities), num_init-1)
-        unvisited_cities = [j for j in range(num_cities) if j not in initial_cities]
+    initial_population = np.empty((lam, num_cities), dtype=np.int64)
+    num_init = num_cities // 12  
+    if num_cities >= 500:
+        num_init = num_cities // 50
+
+    for new_route in range(lam):
+
+        initial_cities = np.random.choice(num_cities, num_init, False)
+        initial_positions = np.random.choice(np.arange(1, num_cities), num_init-1, False)
+
+        #Changed it to a boolean filter to get around having to use .remove/.delete, much faster this way.
+        unvisited_cities = np.ones(num_cities, dtype=np.bool_)
+        unvisited_cities[initial_cities] = False
+
         tour = np.full(num_cities, -1)
         tour[0] = initial_cities[0]   
         tour[initial_positions] = initial_cities[1:]
         for i in range(1, num_cities):
             if tour[i] != -1:
                 continue
-            #print(i, "unvisited cities", unvisited_cities)
-            nearest_city = min(unvisited_cities, key=lambda city: distance_matrix[tour[i-1]][city])
+
+            dists = distance_matrix[tour[i-1], unvisited_cities]
+
+            nearest_city_index = np.argmin(dists)
+            nearest_city = np.nonzero(unvisited_cities)[0][nearest_city_index]
             tour[i] = nearest_city
-            unvisited_cities.remove(tour[i])
-        # if not check_perm(tour):
+            unvisited_cities[nearest_city] = False
+        #if not check_perm(tour):
         #     print("Not working...")
         #     print("The tour:", np.sort(tour))
-        initial_population.append(np.array(tour))
-    return np.array(initial_population)
+        #initial_population.append(np.array(tour))
+        initial_population[new_route] = tour
+    return initial_population
+
+
+
+
 
 
 def check_perm(array):
@@ -642,6 +661,8 @@ testInd2 = Individual(10)
 #print("Indexing:", testArray[testIndex])
 
 #tpx(testInd, testInd2)
+
+
 prog = TspProg()
 params = Parameters(lambd=1000, mu=1000, k=5, its=2000)
-prog.optimize("tour50.csv", params)
+prog.optimize("tour100.csv", params)

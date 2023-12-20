@@ -26,7 +26,6 @@ class TspProg:
         if testFile is not None:
             distanceMatrix = testFile
 
-        print("Distance Matrix: \n", distanceMatrix)
 		#Parameters
         lam = params.la #Population size
         mu = params.mu  #Offspring size  
@@ -46,7 +45,7 @@ class TspProg:
         population = nn_krandom_generation(distanceMatrix, lam)
         #routes = parallel_diversification_generation(distanceMatrix, lam)
         #routes = sequential_diversification_generation(distanceMatrix, lam)
-
+        print("Done generating initial population...")
         meanHist = []
         minimumHist = []
 
@@ -99,8 +98,8 @@ class TspProg:
 
 
 			##### ELIMINATION
-            population = elimination(distanceMatrix, population, offspring, lam)
-
+            #population = elimination(distanceMatrix, population, offspring, lam)
+            population = shared_fitness_eliminiation(distanceMatrix, fitness, population, offspring, lam)
 			##### EVALUATION
             objectiveValues = np.array([fitness(ind, distanceMatrix) for ind in population])
             mean = np.mean(objectiveValues)
@@ -144,21 +143,32 @@ class Parameters:
 
 
 def fitness(individual, dmatrix):
-	distance = 0
-	n = len(dmatrix[0])
-	individual
-	for i in range(0,n-1):
-		distance += dmatrix[individual[i], individual[i+1]]  
-	distance += dmatrix[individual[n-1], individual[0]]      
-	return distance
+    distance = 0
+    n = len(dmatrix[0])
+    individual
+    for i in range(0,n-1):
+        distance += dmatrix[individual[i], individual[i+1]]  
+    distance += dmatrix[individual[n-1], individual[0]]      
+    return distance
 
 
-def shared_fitness(fitnessFunc, individual, pop=None, betaInit=0):
+def shared_fitness(fitnessFunc, individual, dmatrix, pop=None, betaInit=0):
     if pop is None:
-        fitnessFunc(individual)
+        return fitness(individual, dmatrix)
 
     alpha = 1
-    sigma = 0 #We need a distance function!
+    #Max distance considered
+    sigma =  (len(individual)-1) * 0.95 #We need a distance function!
+
+    distances = ham_dists(individual, pop)
+    beta = betaInit
+    for dist in distances:
+        if dist <= sigma:
+            beta += 1 - (dist/sigma)**alpha
+    origFit = fitness(individual, dmatrix)
+    res = origFit * beta**np.sign(origFit)
+    return res
+
 
 '''How to define distance for TSP? 
 Look on the internet, how to quantify distance between permutations 
@@ -167,8 +177,12 @@ look at largest common subpath/overlap,
 for TSP, it can be difficult to get an actual distance that satisfies triangle inequality. But also not necessarily needed. '''
 
 
-def ham_dist(x):
-    return
+#Simply how many cities are not in the same place in either route - not necessarily a good distance function
+def ham_dists(route1, route2):
+    res = np.zeros(route2.shape[0])
+    for i, route in enumerate(route2):
+        res[i] = np.count_nonzero(route1 != route)
+    return res
 
 ####################### MUTATIONS #############################
 
@@ -540,8 +554,18 @@ def elimination(dmatrix, pop, offspring, l):
 
 
 #Shared fitness elimination
-def shared_fitness_eliminiation(dmatrix, fitnessFunc, pop, offspring, l):    
-    return
+def shared_fitness_eliminiation(dmatrix, fitnessFunc, pop, offspring, l):
+    combination = np.vstack((pop, offspring))
+    n = len(pop[0])  
+    survivors = np.empty((l, n), dtype=int)
+    num_individuals = combination.shape[1]
+    fitness_vals = np.empty(num_individuals)
+    for i in range(l):
+        for j in range(num_individuals):
+            fitness_vals[j] = shared_fitness(fitnessFunc, combination[j], dmatrix, survivors[0:i-1,:], 1)
+        idx = np.argmin(fitness_vals)
+        survivors[i] = combination[idx,:]   
+    return survivors
 
 
 
@@ -629,10 +653,15 @@ testArray2 = np.array([[0, 1.5, 2.4, 3.4],
 
 #tpx(testInd, testInd2)
 
+
+
+
 #a = np.array([0,1,2,3,4,5])
+#b = np.array([[1,2,3,4,5,0],[2,3,4,5,1,0],[0,1,2,5,4,3]])
+#print("ham_dists:", ham_dists(a,b))
 #b = np.array([0,3,1,5,4,2])
 #res = pmx(a,b,0,0)
 #print("res:", res)
 prog = TspProg()
-params = Parameters(lambd=1000, mu=1000, k=5, its=200)
+params = Parameters(lambd=100, mu=100, k=5, its=200)
 prog.optimize("tour50.csv", params)
