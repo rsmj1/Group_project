@@ -318,8 +318,10 @@ def pmx(candidate11, candidate22, a1, a2):
 
     # Choose our crossover points:
     my_range = np.random.choice(length,(2),False)
-    a = my_range[0]
-    b = my_range[1]
+    #a = my_range[0]
+    #b = my_range[1]
+    a = 3
+    b = 7
 
     #print(a,b)
     for j in range(a,b):
@@ -374,6 +376,8 @@ def pmx2(candidate1, candidate2, a1, a2):
    # Choose our crossover points:
     a = np.random.randint(length-1)
     b = np.random.randint(a+1, length)
+    a = 3
+    b = 7
     interval = candidate1[a:b]
     offspring = np.empty(length, dtype=np.int64)
     offspring[a:b] = interval
@@ -396,6 +400,8 @@ def pmx2_loop(candidate1, candidate2, a1, a2):
    # Choose our crossover points:
     a = np.random.randint(length-1)
     b = np.random.randint(a+1, length)
+    a = 3
+    b = 7
     interval = candidate1[a:b]
     offspring = np.empty(length, dtype=np.int64)
     offspring[a:b] = interval
@@ -682,8 +688,20 @@ def plotResuts(mean, min):
 #print("Indexing:", testArray[testIndex])
 
 #tpx(testInd, testInd2)
-a = np.array([1,2,3,4,5])
-b = np.array([10,11,12,13,14])
+# a = np.array([0,1,2,3,4,5,6,7,8])
+# b = np.array([8,2,6,7,1,5,4,0,3])
+# c = np.arange(9)
+# d = np.zeros(9, dtype=np.int64) +9
+# d[3:7] = a[3:7]
+# print("a  :", a)
+# print("b  :", b)
+# print("slic", d)
+# print("idx:", c)
+# print("pmx:", pmx(a, b, 0, 0)+1)
+# print("pmx2", pmx2(a,b,0,0)+1)
+# print("ploo", pmx2_loop(a,b,0,0)+1)
+
+
 prog = TspProg()
-params = Parameters(lambd=1000, mu=1000, k=5, its=2000)
+params = Parameters(lambd=200, mu=1000, k=5, its=2000)
 prog.optimize("tour1000.csv", params)
