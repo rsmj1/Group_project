@@ -42,33 +42,28 @@ class TspProg:
         ##### GENERATION
         
         start = time.time()
-        
         #population = random_generation(distanceMatrix, lam)
         population = nn_krandom_generation(distanceMatrix, lam)
         #routes = parallel_diversification_generation(distanceMatrix, lam)
         #routes = sequential_diversification_generation(distanceMatrix, lam)
-
         end = time.time()
         print("Time:", end - start)
 
         meanHist = []
         minimumHist = []
-
         ##### MUTATION
         mutation = invMutation
         #mutation = swapMutation
         #mutation = insertMutation
         #mutation = scrambleMutation
 
-
         i = 0
         yourConvergenceTestsHere = True
         while(yourConvergenceTestsHere):
+            it_start = time.time()
             meanObjective = 0.0
             bestObjective = 0.0
             bestSolution = np.array([1,2,3,4,5])
-
-			# Your code here.
 
 			#Create offspring
             offspring = np.empty((mu, numCities), dtype = int)
@@ -92,17 +87,24 @@ class TspProg:
                 p2 = selected_individuals[2*j + 1]
                 ##### RECOMBINATION 
                 #offspring[j] = edge_crossover(p1, p2)
-                #offspring[j] = recursive_fill(p1, p2)
                 #offspring[j] = partially_mapped_crossover(p1, p2)
-                offspring[j] = pmx(p1, p2, alpha, alpha)
+                #t1 = time.time()
+                #offspring[j] = pmx(p1, p2, alpha, alpha)
+                #t2 = time.time()
+                #offspring[j] = pmx2(p1, p2, alpha, alpha)
+                offspring[j] = pmx2_loop(p1, p2, alpha, alpha)
+
+                #t3 = time.time()
+                #print("pmx", t2-t1, "pmx2", t3-t2)
+
                 #offspring[j] = tpx(p1, p2, alpha, alpha)
 
             mutation(offspring, alpha)
             mutation(population, alpha)
 
-
 			##### ELIMINATION
             population = elimination(distanceMatrix, population, offspring, lam)
+
 
 			##### EVALUATION
             objectiveValues = np.array([fitness(ind, distanceMatrix) for ind in population])
@@ -122,6 +124,9 @@ class TspProg:
             bestObjective = minimum
             bestSolution = population[np.argmin(objectiveValues)]
             timeLeft = self.reporter.report(meanObjective, bestObjective, bestSolution)
+
+            it_end = time.time()
+            print("Iteration time:", it_end-it_start)
 			#print("hello", timeLeft)
             if i >= iterations:
                 bestInd = population[np.argmin(objectiveValues)]
@@ -137,22 +142,6 @@ class TspProg:
 		# Your code here.
         return 0
 
-
-class Individual:
-  #Individuals from the population for the algorithm
-  #Each will be initialized randomly and represent a permutation of cities in the TSP problem
-  def __init__(self, numCities = None, route = None, alpha = None):
-    if route is None:
-      self.route = np.random.permutation(numCities)
-    else:
-      self.route = route
-    #self adaptivity parameter
-    if alpha is None:
-      #self.alpha = max(0.05, 0.1 + 0.05*np.random.normal()) # max(0.05, 0.1 + ~N(0, 0.05^2))
-      self.alpha = 0.2
-    else:
-      self.alpha = alpha
-
 class Parameters:
   def __init__(self, lambd, mu, k, its):
     self.la = lambd
@@ -160,23 +149,15 @@ class Parameters:
     self.k = k
     self.iterations = its
 
-
+@nb.njit()
 def fitness(individual, dmatrix):
-	distance = 0
 	n = len(dmatrix[0])
-	individual
+	distance = 0
 	for i in range(0,n-1):
 		distance += dmatrix[individual[i], individual[i+1]]  
 	distance += dmatrix[individual[n-1], individual[0]]      
 	return distance
 
-
-def shared_fitness(fitnessFunc, individual, pop=None, betaInit=0):
-    if pop is None:
-        fitnessFunc(individual)
-
-    alpha = 1
-    sigma = 0 #We need a distance function!
 
 '''How to define distance for TSP? 
 Look on the internet, how to quantify distance between permutations 
@@ -184,9 +165,6 @@ Look on the internet, how to quantify distance between permutations
 look at largest common subpath/overlap,
 for TSP, it can be difficult to get an actual distance that satisfies triangle inequality. But also not necessarily needed. '''
 
-
-def ham_dist(x):
-    return
 
 ####################### MUTATIONS #############################
 
@@ -261,17 +239,12 @@ def tpx(p1, p2, a1, a2):
     n = len(p1)
     i = np.random.randint(0,n-1)
     j = np.random.randint(i+1,n) 
-    #print("i,j:", i, j)
-    #print("ii:", "[0 1 2 3 4 5 6 7 8 9]")
-    #print("p1:", p1)
-    #print("p2:", p2)
 
     route1 = np.empty(n, dtype = int)
     route1[0:i] = p1[0:i]
     route1[j:n] = p1[j:n]
     set1 = set(p1[i:j])
-    #print("newRoute before:", route1)
-    #print("set1:", set1)
+
     c = 0
     currSlot = i
     while len(set1) != 0:
@@ -280,19 +253,12 @@ def tpx(p1, p2, a1, a2):
             set1.remove(p2[c])
             currSlot += 1
         c += 1
-    #print("newRoute after:", route1)
     alpha = combineAlphas(a1, a2)
     return route1
 
 
-def recursive_fill(index, index_set, item, offspring, candidate):
-    if index not in index_set:
-        offspring[index] = item
-        index_set.add(index)
-    else:
-        new_item = offspring[index]
-        new_index = candidate.index(new_item)
-        recursive_fill(new_index, index_set, item, offspring, candidate)
+
+
 
 
 def edge_crossover(parent1, parent2):
@@ -388,9 +354,68 @@ def pmx(candidate11, candidate22, a1, a2):
     # Finally, fill in the blanks:
     for final_item in full_set^index_set:
         offspring[final_item] = candidate2[final_item]
-
     return np.array(offspring)
 ### END PMX
+
+
+def recursive_fill(index, index_set, item, offspring, candidate):
+    if index not in index_set:
+        offspring[index] = item
+        index_set.add(index)
+    else:
+        new_item = offspring[index]
+        new_index = candidate.index(new_item)
+        recursive_fill(new_index, index_set, item, offspring, candidate)
+
+
+#Faster for bigger arrays
+def pmx2(candidate1, candidate2, a1, a2):
+    length = candidate1.size
+   # Choose our crossover points:
+    a = np.random.randint(length-1)
+    b = np.random.randint(a+1, length)
+    interval = candidate1[a:b]
+    offspring = np.empty(length, dtype=np.int64)
+    offspring[a:b] = interval
+    index_map = np.arange(length)
+    index_map[candidate1] = np.arange(length)
+    loop_indexes = np.concatenate([np.arange(0,a), np.arange(b, length)])
+    for i in loop_indexes:
+        curr_city = candidate2[i]
+        while curr_city in interval:
+            new_index = index_map[curr_city]
+            curr_city = candidate2[new_index]
+        offspring[i] = curr_city
+
+    #print("offspring:", offspring)
+    return offspring
+
+
+def pmx2_loop(candidate1, candidate2, a1, a2):
+    length = candidate1.size
+   # Choose our crossover points:
+    a = np.random.randint(length-1)
+    b = np.random.randint(a+1, length)
+    interval = candidate1[a:b]
+    offspring = np.empty(length, dtype=np.int64)
+    offspring[a:b] = interval
+    index_map = np.arange(length)
+    index_map[candidate1] = np.arange(length)
+    loop_indexes = np.concatenate([np.arange(0,a), np.arange(b, length)])
+    offspring = pmx2loop(index_map, candidate2, offspring, loop_indexes, interval)
+
+    #print("offspring:", offspring)
+    return offspring
+@nb.njit()
+def pmx2loop(index_map, candidate2, offspring, loop_indexes, interval):
+    for i in loop_indexes:
+        curr_city = candidate2[i]
+        while curr_city in interval:
+            new_index = index_map[curr_city]
+            curr_city = candidate2[new_index]
+        offspring[i] = curr_city
+    return offspring
+
 
 ########################### Population Generation ######################################
 def heuristic_generation(distance_matrix, lam):
@@ -429,7 +454,6 @@ def nn_krandom_generation(distance_matrix, lam):
         num_init = num_cities // 50
 
     for new_route in range(lam):
-
         initial_cities = np.random.choice(num_cities, num_init, False)
         initial_positions = np.random.choice(np.arange(1, num_cities), num_init-1, False)
 
@@ -443,9 +467,7 @@ def nn_krandom_generation(distance_matrix, lam):
         for i in range(1, num_cities):
             if tour[i] != -1:
                 continue
-
             dists = distance_matrix[tour[i-1], unvisited_cities]
-
             nearest_city_index = np.argmin(dists)
             nearest_city = np.nonzero(unvisited_cities)[0][nearest_city_index]
             tour[i] = nearest_city
@@ -564,6 +586,7 @@ def exp_selection(dmatrix, pop, l, mu, selection_pressure=0.01):
 ########################### Elimination ################################
 
 #lambda + mu elimination
+
 def elimination(dmatrix, pop, offspring, l):
     combination = np.vstack((pop, offspring))
     pred = np.array([fitness(x, dmatrix) for x in combination])
@@ -573,12 +596,12 @@ def elimination(dmatrix, pop, offspring, l):
     return choices
 
 
-#Shared fitness elimination
-def shared_fitness_eliminiation(dmatrix, fitnessFunc, pop, offspring, l):    
-    return
-
-
-
+'''
+def swap_lso(dmatrix, pop):
+    for i in range(pop.shape[0]):
+        curr_route = pop[i]
+        bestFit = fitness()
+'''
 
 
 ######################## Mutation Rate Related Stuff #########################
@@ -627,17 +650,15 @@ def plotResuts(mean, min):
 
 ############################## RUN SETUP ################################
 
-testArray1 = np.array([[0, 1.5, 2.4, 3.4],
-                       [2.8, 0, 5.1, 1.3],
-					   [10., 5.4, 0, 9.5],
-                       [6.6, 3.8, 9.3, 0]])
+# testArray1 = np.array([[0, 1.5, 2.4, 3.4],
+#                        [2.8, 0, 5.1, 1.3],
+# 					   [10., 5.4, 0, 9.5],
+#                        [6.6, 3.8, 9.3, 0]])
 
-testArray2 = np.array([[0, 1.5, 2.4, 3.4],
-                       [2.8, 0, np.inf, 1.3],
-					   [10., 5.4, 0, 9.5],
-                       [np.inf, 3.8, 9.3, 0]])
-testInd = Individual(10)
-testInd2 = Individual(10)
+# testArray2 = np.array([[0, 1.5, 2.4, 3.4],
+#                        [2.8, 0, np.inf, 1.3],
+# 					   [10., 5.4, 0, 9.5],
+#                        [np.inf, 3.8, 9.3, 0]])
 
 
 # testL = 5000
@@ -661,8 +682,8 @@ testInd2 = Individual(10)
 #print("Indexing:", testArray[testIndex])
 
 #tpx(testInd, testInd2)
-
-
+a = np.array([1,2,3,4,5])
+b = np.array([10,11,12,13,14])
 prog = TspProg()
 params = Parameters(lambd=1000, mu=1000, k=5, its=2000)
-prog.optimize("tour100.csv", params)
+prog.optimize("tour1000.csv", params)
