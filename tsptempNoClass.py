@@ -88,14 +88,10 @@ class TspProg:
                 ##### RECOMBINATION 
                 #offspring[j] = edge_crossover(p1, p2)
                 #offspring[j] = partially_mapped_crossover(p1, p2)
-                #t1 = time.time()
                 #offspring[j] = pmx(p1, p2, alpha, alpha)
-                #t2 = time.time()
                 #offspring[j] = pmx2(p1, p2, alpha, alpha)
                 offspring[j] = pmx2_loop(p1, p2, alpha, alpha)
 
-                #t3 = time.time()
-                #print("pmx", t2-t1, "pmx2", t3-t2)
 
                 #offspring[j] = tpx(p1, p2, alpha, alpha)
 
@@ -318,10 +314,9 @@ def pmx(candidate11, candidate22, a1, a2):
 
     # Choose our crossover points:
     my_range = np.random.choice(length,(2),False)
-    #a = my_range[0]
-    #b = my_range[1]
-    a = 3
-    b = 7
+    a = my_range[0]
+    b = my_range[1]
+
 
     #print(a,b)
     for j in range(a,b):
@@ -376,8 +371,6 @@ def pmx2(candidate1, candidate2, a1, a2):
    # Choose our crossover points:
     a = np.random.randint(length-1)
     b = np.random.randint(a+1, length)
-    a = 3
-    b = 7
     interval = candidate1[a:b]
     offspring = np.empty(length, dtype=np.int64)
     offspring[a:b] = interval
@@ -400,8 +393,6 @@ def pmx2_loop(candidate1, candidate2, a1, a2):
    # Choose our crossover points:
     a = np.random.randint(length-1)
     b = np.random.randint(a+1, length)
-    a = 3
-    b = 7
     interval = candidate1[a:b]
     offspring = np.empty(length, dtype=np.int64)
     offspring[a:b] = interval
@@ -455,9 +446,8 @@ def heuristic_generation(distance_matrix, lam):
 def nn_krandom_generation(distance_matrix, lam):
     num_cities = len(distance_matrix[0])
     initial_population = np.empty((lam, num_cities), dtype=np.int64)
-    num_init = num_cities // 12  
-    if num_cities >= 500:
-        num_init = num_cities // 50
+    num_init = 5
+
 
     for new_route in range(lam):
         initial_cities = np.random.choice(num_cities, num_init, False)
@@ -703,5 +693,5 @@ def plotResuts(mean, min):
 
 
 prog = TspProg()
-params = Parameters(lambd=200, mu=1000, k=5, its=2000)
-prog.optimize("tour1000.csv", params)
+params = Parameters(lambd=1000, mu=1000, k=5, its=2000)
+prog.optimize("tour50.csv", params)
