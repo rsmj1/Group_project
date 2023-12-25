@@ -47,11 +47,13 @@ class TspProg:
         population = nn_krandom_generation(distanceMatrix, lam)
         #routes = parallel_diversification_generation(distanceMatrix, lam)
         #routes = sequential_diversification_generation(distanceMatrix, lam)
-        # for i in range(lam):
-        #     start = time.time()
-        #     compute_all_shared_fitnesses(population, distanceMatrix)
-        #     end = time.time()
-        #     print("Time:", end - start)
+        for i in range(lam):
+            start = time.time()
+            #compute_all_shared_fitnesses(population, distanceMatrix)
+            route = population[i]
+            dist_to_pop2(route, population)
+            end = time.time()
+            print("Time:", end - start)
 
 
         meanHist = []
@@ -207,7 +209,16 @@ def dist_to_pop(route, pop):
 
     return output
 
+@nb.njit()
+def dist_to_pop2(route, pop):
+    popSize = pop.shape[0]
+    output = np.zeros(popSize, dtype=np.int64)
+    n = pop.shape[1]
+    edges = np.empty(n*n)
+    for i in range(popSize):
+        output[i] = common_edges_dist20(route, pop[i],edges, i)
 
+    return output
 
 #An edge might be 4-5 OR 5-4...
 #I hash the pairs essentially, make lookups cheaper, cheaper to store ints than tuples
@@ -249,6 +260,40 @@ def common_edges_dist2(route1, route2):
 
 
 
+@nb.njit()
+def common_edges_dist20(route1, route2, edges, num):
+    num_edges = 0
+    n = route1.shape[0]
+    for i in range(n-1):
+        a = route1[i]
+        b = route1[i+1]
+        if a < b:
+            edges[a * 1000 + b] = num
+        else:
+            edges[b * 1000 + a] = num
+    if route1[n-1] < route1[0]:
+        edges[route1[n-1]*1000+route1[0]] = num
+    else:
+        edges[route1[0]*1000+route1[n-1]] = num
+
+    for i in range(n-1):
+        a = route2[i]
+        b = route2[i+1]
+        if a < b:            
+            val = a * 1000 + b
+        else:
+            val = b * 1000 + a
+        if edges[val] == num:
+            num_edges += 1
+    a = route2[n-1]
+    b = route2[b]
+    if a < b:            
+        val = a * 1000 + b
+    else:
+        val = b * 1000 + a
+    if edges[val] == num:
+        num_edges += 1
+    return n-num_edges
 
 
 
@@ -683,12 +728,14 @@ def elimination(dmatrix, pop, offspring, l):
     return choices
 
 
-'''
+
 def swap_lso(dmatrix, pop):
     for i in range(pop.shape[0]):
         curr_route = pop[i]
         bestFit = fitness()
-'''
+
+def swap_single(dmatrix, ind, pop):
+    bestFit = fitness(ind)
 
 
 ######################## Mutation Rate Related Stuff #########################
@@ -782,12 +829,12 @@ def plotResuts(mean, min):
 # print("pmx2", pmx2(a,b,0,0)+1)
 # print("ploo", pmx2_loop(a,b,0,0)+1)
     
-a = np.array([0,1,2,3,4,5,6,7,8])
-b = np.array([1,2,6,7,8,5,4,3,0])
-c = np.array([[1,2,6,7,8,5,4,3,0], [0,1,2,3,4,5,6,7,8], [8,7,6,5,4,3,2,1,0]])
-#print("dist:", common_edges_dist(a, b))
-#print("dist:", common_edges_dist2(a, b))
-#print("dist:", common_edges_dist3(a, b))
+# a = np.array([0,1,2,3,4,5,6,7,8])
+# b = np.array([1,2,6,7,8,5,4,3,0])
+# c = np.array([[1,2,6,7,8,5,4,3,0], [0,1,2,3,4,5,6,7,8], [8,7,6,5,4,3,2,1,0]])
+# print("dist:", common_edges_dist2(a, b))
+# edges = np.empty(81)
+# print("dist:", common_edges_dist20(a, b, edges, 1))
 
 
 
