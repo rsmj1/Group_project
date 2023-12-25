@@ -47,12 +47,10 @@ class TspProg:
         population = nn_krandom_generation(distanceMatrix, lam)
         #routes = parallel_diversification_generation(distanceMatrix, lam)
         #routes = sequential_diversification_generation(distanceMatrix, lam)
-        for i in range(population.shape[0]):
+        for i in range(lam):
             start = time.time()
-        
             route = population[i]
-            dist_to_pop(route, population)
-
+            shared_fitness(route, distanceMatrix, population)
             end = time.time()
             print("Time:", end - start)
 
@@ -169,38 +167,71 @@ Look on the internet, how to quantify distance between permutations
 look at largest common subpath/overlap,
 for TSP, it can be difficult to get an actual distance that satisfies triangle inequality. But also not necessarily needed. '''
 
-#@nb.njit()
+
+
+#Shared fitness elimination
+@nb.njit()
+def shared_fitness_eliminiation(dmatrix, population, offspring, num_survivors):
+    individuals = np.vstack((population, offspring))
+    n = population.shape[1]
+    survivors = np.empty((num_survivors, n))
+    num_survivors = survivors.shape[0]
+    for i in range(num_survivors):
+        if i == 0:
+            idx = compute_fitness_vals_best_id(individuals, None, dmatrix)
+        else:
+            idx = compute_fitness_vals_best_id(individuals, survivors[0:i,:], dmatrix)
+        survivors[i] = individuals[idx,:]
+    return survivors
+
+@nb.njit()
+def compute_fitness_vals_best_id(individuals, survivors, dmatrix):
+    num_individuals = individuals.shape[0]
+    best_val = np.inf
+    best_index = 0
+    for j in range(num_individuals):
+        fitness_val = shared_fitness(individuals[j], dmatrix, survivors, 1)
+        if fitness_val < best_val:
+            best_val = fitness_val
+            best_index = j
+    return best_index
+
+@nb.njit()
+def all_fitness(individuals, dmatrix, population):
+    n = individuals.shape[0]
+    for i in range(n):
+        route = individuals[i]
+        shared_fitness(route, dmatrix, population)
+
+
+
+@nb.njit()
+def shared_fitness(individual, dmatrix, population, betaInit=0):
+    n = individual.shape[0]
+    alpha = 1
+    sigma =  (n-1) * 0.5 #We need a distance function!
+
+    distances = dist_to_pop(individual, population)
+    beta = betaInit
+    for i in range(n):
+        dist = distances[i]
+        if dist <= sigma:
+            beta += 1 - (dist/sigma)**alpha
+    origFit = fitness(individual, dmatrix)
+    res = origFit * beta**np.sign(origFit)
+    return res
+
+
+@nb.njit()
 def dist_to_pop(route, pop):
     popSize = pop.shape[0]
     output = np.zeros(popSize, dtype=np.int64)
     for i in range(popSize):
-        output[i] = common_edges_dist3(route, pop[i])
+        output[i] = common_edges_dist2(route, pop[i])
 
     return output
 
 
-#TODO: Need distance for one individual and 
-@nb.njit()
-def common_edges_dist(route1, route2):
-    num_edges = 0
-    n = route1.shape[0]
-
-    for i in range(n-1):
-        for j in range(n-1):
-            if ((route1[i], route1[i+1]) == (route2[j], route2[j+1])) or ((route1[i], route1[i+1]) == (route2[j+1], route2[j])):
-                num_edges += 1
-                #print((route1[i], route1[i+1]))
-    #TODO: Check all ciphers from route1 against route2's last
-    for i in range(n-1):
-        if (route1[n-1], route1[0]) == (route2[i], route2[i+1]) or (route1[n-1], route1[0]) == (route2[i+1], route2[i]):
-            num_edges += 1
-            #print((route1[n-1], route1[0]))
-
-    if  (route1[n-1], route1[0]) == (route2[n-1], route2[0]) or (route1[n-1], route1[0]) == (route2[0], route2[n-1]):
-            num_edges += 1
-            #print((route1[n-1], route1[0]))
-
-    return num_edges
 
 #An edge might be 4-5 OR 5-4...
 #I hash the pairs essentially, make lookups cheaper, cheaper to store ints than tuples
@@ -222,23 +253,6 @@ def common_edges_dist2(route1, route2):
     val1 = route2[n-1] * 100 + route2[0]
     val2 = route2[0] * 100 + route2[n-1]
     if val1 in edges or val2 in edges:
-       num_edges += 1
-    return n-num_edges
-
-#An edge might be 4-5 OR 5-4...
-@nb.njit()
-def common_edges_dist3(route1, route2):
-    num_edges = 0
-    n = route1.shape[0]
-    edges = set()
-    for i in range(n-1):
-        edges.add((route1[i], route1[i+1]))
-    edges.add((route1[n-1],route1[0]))
-
-    for i in range(n-1):
-        if (route2[i], route2[i+1]) in edges or (route2[i+1], route2[i]) in edges:
-            num_edges += 1
-    if (route2[n-1], route2[0]) in edges or (route2[0], route2[n-1]) in edges:
        num_edges += 1
     return n-num_edges
 
