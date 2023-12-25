@@ -58,7 +58,7 @@ class TspProg:
         #     print("new fits:", meanFit)
         
         #LSO after initialization
-        swap_lso(distanceMatrix, population)
+        fast_swap_lso(distanceMatrix, population)
 
         meanHist = []
         minimumHist = []
@@ -140,10 +140,11 @@ class TspProg:
                 break
 
             if timeLeft < 0:
+                print("No time left, stopping!")
                 break
             
         print("Route of best individual:")
-        printIndividual(bestInd, distanceMatrix)
+        printIndividual(bestInd, alpha, distanceMatrix)
         print("Final mean:", meanHist[len(meanHist)-1], ", Final best:", minimumHist[len(minimumHist)-1])
         plotResuts(meanHist, minimumHist)
 		# Your code here.
@@ -176,6 +177,28 @@ Look on the internet, how to quantify distance between permutations
 - one could be, how many swaps needed to go from one to the other, 
 look at largest common subpath/overlap,
 for TSP, it can be difficult to get an actual distance that satisfies triangle inequality. But also not necessarily needed. '''
+
+
+@nb.njit()
+def shared_fitness_elimination():
+    return
+
+
+
+@nb.njit()
+def compute_fitness_vals_best_id(individuals, survivors, dmatrix):
+    num_individuals = individuals.shape[0]
+    best_val = np.inf
+    best_index = 0
+    for j in range(num_individuals):
+        fitness_val = shared_fitness(individuals[j], dmatrix, survivors, 1)
+        if fitness_val < best_val:
+            best_val = fitness_val
+            best_index = j
+    return best_index
+
+
+
 
 @nb.njit()
 def compute_all_shared_fitnesses(population, dmatrix):
@@ -761,9 +784,7 @@ def combineAlphas(a1, a2):
 def solutionToCycle(path):
     return []
 
-def printIndividual(ind, dmatrix = None):
-    route = ind.route
-    alpha = ind.alpha
+def printIndividual(route, alpha, dmatrix = None):
 	#print("Alpha: ", alpha)
     print("Route: ", end="")
     if dmatrix is None:
@@ -855,8 +876,8 @@ def plotResuts(mean, min):
 #print("dists", dist_to_pop(a,c))
 
 prog = TspProg()
-params = Parameters(lambd=250, mu=250, k=5, its=2000)
-prog.optimize("tour200.csv", params)
+params = Parameters(lambd=500, mu=500, k=5, its=2000)
+prog.optimize("tour1000.csv", params)
 
 
 
