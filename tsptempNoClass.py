@@ -51,10 +51,10 @@ class TspProg:
             start = time.time()
             #compute_all_shared_fitnesses(population, distanceMatrix)
             route = population[i]
-            dist_to_pop2(route, population)
+            compute_all_shared_fitnesses2(population, distanceMatrix)
             end = time.time()
             print("Time:", end - start)
-
+        print("here!")
 
         meanHist = []
         minimumHist = []
@@ -74,7 +74,7 @@ class TspProg:
 
 			#Create offspring
             offspring = np.empty((mu, numCities), dtype = int)
-
+            print("here2")
             num_parents = 2*mu
 
 
@@ -83,7 +83,7 @@ class TspProg:
             #selected_individuals = exp_selection(distanceMatrix, population, lam, num_parents, selection_pressure) #Version WITH geometric decay
             selected_individuals = k_tournament_selection(distanceMatrix, population, num_parents, k)
             #selected_individuals = stochastic_universal_sampling(distanceMatrix, population, num_parents)
-
+            print("here3")
             #Geometric decay
             if i % 3 == 0 and a > 0.0001: #Set how aggressive the decay should be
                 selection_pressure *= a
@@ -181,7 +181,17 @@ def compute_all_shared_fitnesses(population, dmatrix):
         fitnesses[i] = shared_fitness(route, dmatrix, population)
     return fitnesses
 
-
+@nb.njit()
+def compute_all_shared_fitnesses2(population, dmatrix):
+    n = population.shape[0]
+    length = population.shape[1]
+    edges = np.zeros(length*length, dtype=np.int64)
+    fitnesses = np.empty(n)
+    for i in range(n):
+        route = population[i]
+        fitnesses[i] = shared_fitness2(route, dmatrix, population, edges)
+        edges[:] = 0
+    return fitnesses
 
 @nb.njit()
 def shared_fitness(individual, dmatrix, population, betaInit=0):
@@ -199,6 +209,24 @@ def shared_fitness(individual, dmatrix, population, betaInit=0):
     res = origFit * beta**np.sign(origFit)
     return res
 
+@nb.njit()
+def shared_fitness2(individual, dmatrix, population, edges, betaInit=0):
+    n = individual.shape[0]
+    alpha = 1
+    sigma =  (n-1) * 0.2 #We need a distance function!
+
+    distances = dist_to_pop2(individual, population, edges)
+    beta = betaInit
+    for i in range(n):
+        dist = distances[i]
+        if dist <= sigma:
+            beta += 1 - (dist/sigma)**alpha
+    origFit = fitness(individual, dmatrix)
+    res = origFit * beta**np.sign(origFit)
+    return res
+
+
+
 
 @nb.njit()
 def dist_to_pop(route, pop):
@@ -210,13 +238,11 @@ def dist_to_pop(route, pop):
     return output
 
 @nb.njit()
-def dist_to_pop2(route, pop):
+def dist_to_pop2(route, pop, edges):
     popSize = pop.shape[0]
     output = np.zeros(popSize, dtype=np.int64)
-    n = pop.shape[1]
-    edges = np.empty(n*n)
     for i in range(popSize):
-        output[i] = common_edges_dist20(route, pop[i],edges, i)
+        output[i] = common_edges_dist20(route, pop[i], edges, i)
 
     return output
 
@@ -286,7 +312,7 @@ def common_edges_dist20(route1, route2, edges, num):
         if edges[val] == num:
             num_edges += 1
     a = route2[n-1]
-    b = route2[b]
+    b = route2[0]
     if a < b:            
         val = a * 1000 + b
     else:
@@ -294,8 +320,6 @@ def common_edges_dist20(route1, route2, edges, num):
     if edges[val] == num:
         num_edges += 1
     return n-num_edges
-
-
 
 
 
@@ -841,5 +865,5 @@ def plotResuts(mean, min):
 #print("dists", dist_to_pop(a,c))
 
 prog = TspProg()
-params = Parameters(lambd=1000, mu=1000, k=5, its=2000)
+params = Parameters(lambd=500, mu=500, k=5, its=2000)
 prog.optimize("tour1000.csv", params)
