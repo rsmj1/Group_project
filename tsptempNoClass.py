@@ -41,13 +41,21 @@ class TspProg:
         
         ##### GENERATION
         
-        start = time.time()
+
+
         #population = random_generation(distanceMatrix, lam)
         population = nn_krandom_generation(distanceMatrix, lam)
         #routes = parallel_diversification_generation(distanceMatrix, lam)
         #routes = sequential_diversification_generation(distanceMatrix, lam)
-        end = time.time()
-        print("Time:", end - start)
+        for i in range(population.shape[0]):
+            start = time.time()
+        
+            route = population[i]
+            dist_to_pop(route, population)
+
+            end = time.time()
+            print("Time:", end - start)
+
 
         meanHist = []
         minimumHist = []
@@ -160,6 +168,79 @@ Look on the internet, how to quantify distance between permutations
 - one could be, how many swaps needed to go from one to the other, 
 look at largest common subpath/overlap,
 for TSP, it can be difficult to get an actual distance that satisfies triangle inequality. But also not necessarily needed. '''
+
+#@nb.njit()
+def dist_to_pop(route, pop):
+    popSize = pop.shape[0]
+    output = np.zeros(popSize, dtype=np.int64)
+    for i in range(popSize):
+        output[i] = common_edges_dist3(route, pop[i])
+
+    return output
+
+
+#TODO: Need distance for one individual and 
+@nb.njit()
+def common_edges_dist(route1, route2):
+    num_edges = 0
+    n = route1.shape[0]
+
+    for i in range(n-1):
+        for j in range(n-1):
+            if ((route1[i], route1[i+1]) == (route2[j], route2[j+1])) or ((route1[i], route1[i+1]) == (route2[j+1], route2[j])):
+                num_edges += 1
+                #print((route1[i], route1[i+1]))
+    #TODO: Check all ciphers from route1 against route2's last
+    for i in range(n-1):
+        if (route1[n-1], route1[0]) == (route2[i], route2[i+1]) or (route1[n-1], route1[0]) == (route2[i+1], route2[i]):
+            num_edges += 1
+            #print((route1[n-1], route1[0]))
+
+    if  (route1[n-1], route1[0]) == (route2[n-1], route2[0]) or (route1[n-1], route1[0]) == (route2[0], route2[n-1]):
+            num_edges += 1
+            #print((route1[n-1], route1[0]))
+
+    return num_edges
+
+#An edge might be 4-5 OR 5-4...
+#I hash the pairs essentially, make lookups cheaper, cheaper to store ints than tuples
+@nb.njit()
+def common_edges_dist2(route1, route2):
+    num_edges = 0
+    n = route1.shape[0]
+    edges = set()
+    for i in range(n-1):
+        val = route1[i] * 100 + route1[i+1]
+        edges.add(val)
+    edges.add(route1[n-1]*100+route1[0])
+
+    for i in range(n-1):
+        val1 = route2[i] * 100 + route2[i+1]
+        val2 = route2[i+1] * 100 + route2[i]
+        if val1 in edges or val2 in edges:
+            num_edges += 1
+    val1 = route2[n-1] * 100 + route2[0]
+    val2 = route2[0] * 100 + route2[n-1]
+    if val1 in edges or val2 in edges:
+       num_edges += 1
+    return n-num_edges
+
+#An edge might be 4-5 OR 5-4...
+@nb.njit()
+def common_edges_dist3(route1, route2):
+    num_edges = 0
+    n = route1.shape[0]
+    edges = set()
+    for i in range(n-1):
+        edges.add((route1[i], route1[i+1]))
+    edges.add((route1[n-1],route1[0]))
+
+    for i in range(n-1):
+        if (route2[i], route2[i+1]) in edges or (route2[i+1], route2[i]) in edges:
+            num_edges += 1
+    if (route2[n-1], route2[0]) in edges or (route2[0], route2[n-1]) in edges:
+       num_edges += 1
+    return n-num_edges
 
 
 ####################### MUTATIONS #############################
@@ -690,8 +771,18 @@ def plotResuts(mean, min):
 # print("pmx:", pmx(a, b, 0, 0)+1)
 # print("pmx2", pmx2(a,b,0,0)+1)
 # print("ploo", pmx2_loop(a,b,0,0)+1)
+    
+a = np.array([0,1,2,3,4,5,6,7,8])
+b = np.array([1,2,6,7,8,5,4,3,0])
+c = np.array([[1,2,6,7,8,5,4,3,0], [0,1,2,3,4,5,6,7,8], [8,7,6,5,4,3,2,1,0]])
+#print("dist:", common_edges_dist(a, b))
+#print("dist:", common_edges_dist2(a, b))
+#print("dist:", common_edges_dist3(a, b))
 
+
+
+#print("dists", dist_to_pop(a,c))
 
 prog = TspProg()
 params = Parameters(lambd=1000, mu=1000, k=5, its=2000)
-prog.optimize("tour50.csv", params)
+prog.optimize("tour1000.csv", params)

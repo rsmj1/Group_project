@@ -152,7 +152,7 @@ def fitness(individual, dmatrix):
     return distance
 
 
-def shared_fitness(fitnessFunc, individual, dmatrix, pop=None, betaInit=0):
+def shared_fitness(individual, dmatrix, pop=None, betaInit=0):
     if pop is None:
         return fitness(individual, dmatrix)
 
