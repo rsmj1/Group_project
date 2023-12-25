@@ -47,14 +47,18 @@ class TspProg:
         population = nn_krandom_generation(distanceMatrix, lam)
         #routes = parallel_diversification_generation(distanceMatrix, lam)
         #routes = sequential_diversification_generation(distanceMatrix, lam)
-        for i in range(lam):
-            start = time.time()
-            #compute_all_shared_fitnesses(population, distanceMatrix)
-            route = population[i]
-            compute_all_shared_fitnesses2(population, distanceMatrix)
-            end = time.time()
-            print("Time:", end - start)
-        print("here!")
+        # meanFit = np.mean([fitness(x, distanceMatrix) for x in population])
+        # print("start fits:", meanFit)
+        # for i in range(lam):
+        #     start = time.time()
+        #     swap_lso(distanceMatrix, population)
+        #     end = time.time()
+        #     print("Time:", end - start)
+        #     meanFit = np.mean([fitness(x, distanceMatrix) for x in population])
+        #     print("new fits:", meanFit)
+        
+        #LSO after initialization
+        swap_lso(distanceMatrix, population)
 
         meanHist = []
         minimumHist = []
@@ -74,7 +78,6 @@ class TspProg:
 
 			#Create offspring
             offspring = np.empty((mu, numCities), dtype = int)
-            print("here2")
             num_parents = 2*mu
 
 
@@ -83,7 +86,6 @@ class TspProg:
             #selected_individuals = exp_selection(distanceMatrix, population, lam, num_parents, selection_pressure) #Version WITH geometric decay
             selected_individuals = k_tournament_selection(distanceMatrix, population, num_parents, k)
             #selected_individuals = stochastic_universal_sampling(distanceMatrix, population, num_parents)
-            print("here3")
             #Geometric decay
             if i % 3 == 0 and a > 0.0001: #Set how aggressive the decay should be
                 selection_pressure *= a
@@ -103,6 +105,9 @@ class TspProg:
 
             mutation(offspring, alpha)
             mutation(population, alpha)
+
+            #LSO
+            fast_swap_lso(distanceMatrix, population)
 
 			##### ELIMINATION
             population = elimination(distanceMatrix, population, offspring, lam)
@@ -175,47 +180,23 @@ for TSP, it can be difficult to get an actual distance that satisfies triangle i
 @nb.njit()
 def compute_all_shared_fitnesses(population, dmatrix):
     n = population.shape[0]
+    edges = np.zeros(1000000, dtype=np.int64)
     fitnesses = np.empty(n)
     for i in range(n):
         route = population[i]
-        fitnesses[i] = shared_fitness(route, dmatrix, population)
-    return fitnesses
-
-@nb.njit()
-def compute_all_shared_fitnesses2(population, dmatrix):
-    n = population.shape[0]
-    length = population.shape[1]
-    edges = np.zeros(length*length, dtype=np.int64)
-    fitnesses = np.empty(n)
-    for i in range(n):
-        route = population[i]
-        fitnesses[i] = shared_fitness2(route, dmatrix, population, edges)
+        fitnesses[i] = shared_fitness(route, dmatrix, population, edges)
         edges[:] = 0
     return fitnesses
 
-@nb.njit()
-def shared_fitness(individual, dmatrix, population, betaInit=0):
-    n = individual.shape[0]
-    alpha = 1
-    sigma =  (n-1) * 0.2 #We need a distance function!
 
-    distances = dist_to_pop(individual, population)
-    beta = betaInit
-    for i in range(n):
-        dist = distances[i]
-        if dist <= sigma:
-            beta += 1 - (dist/sigma)**alpha
-    origFit = fitness(individual, dmatrix)
-    res = origFit * beta**np.sign(origFit)
-    return res
 
 @nb.njit()
-def shared_fitness2(individual, dmatrix, population, edges, betaInit=0):
+def shared_fitness(individual, dmatrix, population, edges, betaInit=0):
     n = individual.shape[0]
     alpha = 1
-    sigma =  (n-1) * 0.2 #We need a distance function!
+    sigma =  (n-1) * 0.6 #We need a distance function!
 
-    distances = dist_to_pop2(individual, population, edges)
+    distances = dist_to_pop(individual, population, edges)
     beta = betaInit
     for i in range(n):
         dist = distances[i]
@@ -228,66 +209,19 @@ def shared_fitness2(individual, dmatrix, population, edges, betaInit=0):
 
 
 
+#I use i+1 as the array is all zeros, and this should not interfere
 @nb.njit()
-def dist_to_pop(route, pop):
+def dist_to_pop(route, pop, edges):
     popSize = pop.shape[0]
     output = np.zeros(popSize, dtype=np.int64)
     for i in range(popSize):
-        output[i] = common_edges_dist2(route, pop[i])
+        output[i] = common_edges_dist(route, pop[i], edges, i+1)
 
     return output
 
-@nb.njit()
-def dist_to_pop2(route, pop, edges):
-    popSize = pop.shape[0]
-    output = np.zeros(popSize, dtype=np.int64)
-    for i in range(popSize):
-        output[i] = common_edges_dist20(route, pop[i], edges, i)
-
-    return output
-
-#An edge might be 4-5 OR 5-4...
-#I hash the pairs essentially, make lookups cheaper, cheaper to store ints than tuples
-@nb.njit()
-def common_edges_dist2(route1, route2):
-    num_edges = 0
-    n = route1.shape[0]
-    edges = []
-    for i in range(n-1):
-        a = route1[i]
-        b = route1[i+1]
-        if a < b:
-            val = a * 1000 + b
-            edges.append(val)
-        else:
-            val = b * 1000 + a
-            edges.append(val)
-    if route1[n-1] < route1[0]:
-        edges.append(route1[n-1]*1000+route1[0])
-    else:
-        edges.append(route1[0]*1000+route1[n-1])
-
-    edges = set(edges)
-    for i in range(n-1):
-        a = route2[i]
-        b = route2[i+1]
-        if a < b:            
-            val = a * 1000 + b
-        else:
-            val = b * 1000 + a
-        if val in edges:
-            num_edges += 1
-    val1 = route2[n-1] * 1000 + route2[0]
-    val2 = route2[0] * 1000 + route2[n-1]
-    if val1 in edges or val2 in edges:
-       num_edges += 1
-    return n-num_edges
-
-
-
 
 @nb.njit()
-def common_edges_dist20(route1, route2, edges, num):
+def common_edges_dist(route1, route2, edges, num):
     num_edges = 0
     n = route1.shape[0]
     for i in range(n-1):
@@ -319,6 +253,11 @@ def common_edges_dist20(route1, route2, edges, num):
         val = b * 1000 + a
     if edges[val] == num:
         num_edges += 1
+        
+    # print("DOOOOONNNEEEEEEE EDGES SUM:", sum(edges), len(edges), num, n)
+    # for i in range(1000000):
+    #     if edges[i] != 0:
+    #         print(i, "val:", edges[i])
     return n-num_edges
 
 
@@ -678,8 +617,10 @@ def k_tournament_selection(distance_matrix, population, num_parents, k=5):
         numpy.ndarray: An array of selected parents from the population.
     """
 
-    fitness_values = np.array([fitness(ind, distance_matrix) for ind in population])
-
+    #fitness_values = np.array([fitness(ind, distance_matrix) for ind in population])
+    #print("fitness:", fitness_values)
+    fitness_values = compute_all_shared_fitnesses(population, distance_matrix)
+    #print("shared:", shared_values)
     selected_parents = []
     for _ in range(num_parents):
         tournament_indices = np.random.choice(len(population), k, replace=False)
@@ -752,14 +693,59 @@ def elimination(dmatrix, pop, offspring, l):
     return choices
 
 
-
+@nb.njit()
 def swap_lso(dmatrix, pop):
     for i in range(pop.shape[0]):
         curr_route = pop[i]
-        bestFit = fitness()
+        bestFit = fitness(curr_route, dmatrix)
+        bestj = -1
+        bestk = -1
+        for j in range(pop.shape[1]):
+            for k in range(j, pop.shape[1]):
+                temp = curr_route[j]
+                curr_route[j] = curr_route[k]
+                curr_route[k] = temp
+                fit = fitness(curr_route, dmatrix)
+                if fit < bestFit:
+                    bestFit = fit
+                    bestj = j
+                    bestk = k
+                #unswap for next iteration
+                temp = curr_route[j]
+                curr_route[j] = curr_route[k]
+                curr_route[k] = temp
+        temp = pop[i, bestj]
+        pop[i,bestj] = pop[i,bestk]
+        pop[i,bestk] = temp 
 
-def swap_single(dmatrix, ind, pop):
-    bestFit = fitness(ind)
+
+@nb.njit()
+def fast_swap_lso(dmatrix, pop):
+    n = pop.shape[1]
+    for i in range(pop.shape[0]):
+        curr_route = pop[i]
+        bestFit = fitness(curr_route, dmatrix)
+        bestj = -1
+        bestk = -1
+        iters = 5000
+        for j in range(iters):
+            idi = np.random.randint(n-1)
+            idj = np.random.randint(idi+1, n)
+            temp = curr_route[idi]
+            curr_route[idi] = curr_route[idj]
+            curr_route[idj] = temp
+            fit = fitness(curr_route, dmatrix)
+            if fit < bestFit:
+                bestFit = fit
+                bestj = idi
+                bestk = idj
+            #unswap for next iteration
+            temp = curr_route[idi]
+            curr_route[idi] = curr_route[idj]
+            curr_route[idj] = temp
+        temp = pop[i, bestj]
+        pop[i,bestj] = pop[i,bestk]
+        pop[i,bestk] = temp 
 
 
 ######################## Mutation Rate Related Stuff #########################
@@ -808,10 +794,7 @@ def plotResuts(mean, min):
 
 ############################## RUN SETUP ################################
 
-# testArray1 = np.array([[0, 1.5, 2.4, 3.4],
-#                        [2.8, 0, 5.1, 1.3],
-# 					   [10., 5.4, 0, 9.5],
-#                        [6.6, 3.8, 9.3, 0]])
+
 
 # testArray2 = np.array([[0, 1.5, 2.4, 3.4],
 #                        [2.8, 0, np.inf, 1.3],
@@ -856,14 +839,31 @@ def plotResuts(mean, min):
 # a = np.array([0,1,2,3,4,5,6,7,8])
 # b = np.array([1,2,6,7,8,5,4,3,0])
 # c = np.array([[1,2,6,7,8,5,4,3,0], [0,1,2,3,4,5,6,7,8], [8,7,6,5,4,3,2,1,0]])
-# print("dist:", common_edges_dist2(a, b))
-# edges = np.empty(81)
-# print("dist:", common_edges_dist20(a, b, edges, 1))
+# edges = np.empty(1000000)
+# print("dist:", common_edges_dist(a, b, edges, 1))
 
-
+# testArray1 = np.array([[0, 1.5, 2.4, 3.4],
+#                        [2.8, 0, 5.1, 1.3],
+# 					   [10., 5.4, 0, 9.5],
+#                        [6.6, 3.8, 9.3, 0]])
+    
+# population = np.array([[0,1,2,3],[3,1,2,0]])
+# print("pop:", population)
+# swap_lso(testArray1, population)
+# print("pop:", population)
 
 #print("dists", dist_to_pop(a,c))
 
 prog = TspProg()
-params = Parameters(lambd=500, mu=500, k=5, its=2000)
-prog.optimize("tour1000.csv", params)
+params = Parameters(lambd=250, mu=250, k=5, its=2000)
+prog.optimize("tour200.csv", params)
+
+
+
+
+# tour50: simple greedy heuristic 27723
+# tour100: simple greedy heuristic 90851
+# tour200: simple greedy heuristic 39745
+# tour500: simple greedy heuristic 157034
+# tour750: simple greedy heuristic 197541
+# tour1000: simple greedy heuristic 195848
