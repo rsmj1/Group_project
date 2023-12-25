@@ -47,12 +47,11 @@ class TspProg:
         population = nn_krandom_generation(distanceMatrix, lam)
         #routes = parallel_diversification_generation(distanceMatrix, lam)
         #routes = sequential_diversification_generation(distanceMatrix, lam)
-        for i in range(lam):
-            start = time.time()
-            route = population[i]
-            shared_fitness(route, distanceMatrix, population)
-            end = time.time()
-            print("Time:", end - start)
+        # for i in range(lam):
+        #     start = time.time()
+        #     compute_all_shared_fitnesses(population, distanceMatrix)
+        #     end = time.time()
+        #     print("Time:", end - start)
 
 
         meanHist = []
@@ -96,10 +95,9 @@ class TspProg:
                 #offspring[j] = partially_mapped_crossover(p1, p2)
                 #offspring[j] = pmx(p1, p2, alpha, alpha)
                 #offspring[j] = pmx2(p1, p2, alpha, alpha)
-                offspring[j] = pmx2_loop(p1, p2, alpha, alpha)
+                #offspring[j] = pmx2_loop(p1, p2, alpha, alpha)
 
-
-                #offspring[j] = tpx(p1, p2, alpha, alpha)
+                offspring[j] = tpx(p1, p2, alpha, alpha)
 
             mutation(offspring, alpha)
             mutation(population, alpha)
@@ -161,47 +159,25 @@ def fitness(individual, dmatrix):
 	return distance
 
 
+
+
+
+
+################ FITNESS SHARING ##################
 '''How to define distance for TSP? 
 Look on the internet, how to quantify distance between permutations 
 - one could be, how many swaps needed to go from one to the other, 
 look at largest common subpath/overlap,
 for TSP, it can be difficult to get an actual distance that satisfies triangle inequality. But also not necessarily needed. '''
 
-
-
-#Shared fitness elimination
 @nb.njit()
-def shared_fitness_eliminiation(dmatrix, population, offspring, num_survivors):
-    individuals = np.vstack((population, offspring))
-    n = population.shape[1]
-    survivors = np.empty((num_survivors, n))
-    num_survivors = survivors.shape[0]
-    for i in range(num_survivors):
-        if i == 0:
-            idx = compute_fitness_vals_best_id(individuals, None, dmatrix)
-        else:
-            idx = compute_fitness_vals_best_id(individuals, survivors[0:i,:], dmatrix)
-        survivors[i] = individuals[idx,:]
-    return survivors
-
-@nb.njit()
-def compute_fitness_vals_best_id(individuals, survivors, dmatrix):
-    num_individuals = individuals.shape[0]
-    best_val = np.inf
-    best_index = 0
-    for j in range(num_individuals):
-        fitness_val = shared_fitness(individuals[j], dmatrix, survivors, 1)
-        if fitness_val < best_val:
-            best_val = fitness_val
-            best_index = j
-    return best_index
-
-@nb.njit()
-def all_fitness(individuals, dmatrix, population):
-    n = individuals.shape[0]
+def compute_all_shared_fitnesses(population, dmatrix):
+    n = population.shape[0]
+    fitnesses = np.empty(n)
     for i in range(n):
-        route = individuals[i]
-        shared_fitness(route, dmatrix, population)
+        route = population[i]
+        fitnesses[i] = shared_fitness(route, dmatrix, population)
+    return fitnesses
 
 
 
@@ -209,7 +185,7 @@ def all_fitness(individuals, dmatrix, population):
 def shared_fitness(individual, dmatrix, population, betaInit=0):
     n = individual.shape[0]
     alpha = 1
-    sigma =  (n-1) * 0.5 #We need a distance function!
+    sigma =  (n-1) * 0.2 #We need a distance function!
 
     distances = dist_to_pop(individual, population)
     beta = betaInit
@@ -239,22 +215,45 @@ def dist_to_pop(route, pop):
 def common_edges_dist2(route1, route2):
     num_edges = 0
     n = route1.shape[0]
-    edges = set()
+    edges = []
     for i in range(n-1):
-        val = route1[i] * 100 + route1[i+1]
-        edges.add(val)
-    edges.add(route1[n-1]*100+route1[0])
+        a = route1[i]
+        b = route1[i+1]
+        if a < b:
+            val = a * 1000 + b
+            edges.append(val)
+        else:
+            val = b * 1000 + a
+            edges.append(val)
+    if route1[n-1] < route1[0]:
+        edges.append(route1[n-1]*1000+route1[0])
+    else:
+        edges.append(route1[0]*1000+route1[n-1])
 
+    edges = set(edges)
     for i in range(n-1):
-        val1 = route2[i] * 100 + route2[i+1]
-        val2 = route2[i+1] * 100 + route2[i]
-        if val1 in edges or val2 in edges:
+        a = route2[i]
+        b = route2[i+1]
+        if a < b:            
+            val = a * 1000 + b
+        else:
+            val = b * 1000 + a
+        if val in edges:
             num_edges += 1
-    val1 = route2[n-1] * 100 + route2[0]
-    val2 = route2[0] * 100 + route2[n-1]
+    val1 = route2[n-1] * 1000 + route2[0]
+    val2 = route2[0] * 1000 + route2[n-1]
     if val1 in edges or val2 in edges:
        num_edges += 1
     return n-num_edges
+
+
+
+
+
+
+
+
+
 
 
 ####################### MUTATIONS #############################
@@ -326,12 +325,13 @@ def insertMutation(inds, a):
 ######################### RECOMBINATIONS ###############################
 
 #Ordered two-point crossover for permutations
+@nb.njit()
 def tpx(p1, p2, a1, a2):
     n = len(p1)
     i = np.random.randint(0,n-1)
     j = np.random.randint(i+1,n) 
 
-    route1 = np.empty(n, dtype = int)
+    route1 = np.empty(n, dtype = np.int64)
     route1[0:i] = p1[0:i]
     route1[j:n] = p1[j:n]
     set1 = set(p1[i:j])
@@ -344,11 +344,7 @@ def tpx(p1, p2, a1, a2):
             set1.remove(p2[c])
             currSlot += 1
         c += 1
-    alpha = combineAlphas(a1, a2)
     return route1
-
-
-
 
 
 
