@@ -929,6 +929,7 @@ def swap3_lso(dmatrix, ind):
     besti = -1
     bestj = -1
     bestk = -1
+    print("fit of ind before", fitness(ind, dmatrix))
     #i = 0, j = 1, k = 2
     bestFit = fitness(ind, dmatrix)
     for i in range(n-2):
@@ -952,6 +953,7 @@ def swap3_lso(dmatrix, ind):
                 ind[i] = jval
                 ind[j] = ival
                 ind[k] = kval
+                fit = fitness(ind, dmatrix)
                 if fit < bestFit:
                     bestFit = fit
                     bestival = jval
@@ -961,7 +963,8 @@ def swap3_lso(dmatrix, ind):
                 #Perm3 120
                 ind[i] = jval
                 ind[j] = kval
-                ind[k] = ival    
+                ind[k] = ival
+                fit = fitness(ind, dmatrix) 
                 if fit < bestFit:
                     bestFit = fit
                     bestival = jval
@@ -972,6 +975,7 @@ def swap3_lso(dmatrix, ind):
                 ind[i] = kval
                 ind[j] = ival
                 ind[k] = jval    
+                fit = fitness(ind, dmatrix)
                 if fit < bestFit:
                     bestFit = fit
                     bestival = kval
@@ -981,7 +985,8 @@ def swap3_lso(dmatrix, ind):
                 #Perm5 210
                 ind[i] = kval
                 ind[j] = jval
-                ind[k] = ival    
+                ind[k] = ival
+                fit = fitness(ind, dmatrix)
                 if fit < bestFit:
                     bestFit = fit
                     bestival = kval
@@ -1293,7 +1298,8 @@ testArray1 = np.array([[0, 1.5, 2.4, 3.4],
     
 population = np.array([[0,1,2,3],[3,1,2,0]])
 a = np.array([0,1,2,3])
-optimizeBestInd(swap3_lso, population, testArray1)
+#optimizeBestInd(swap3_lso, a, testArray1)
+swap3_lso(testArray1, a)
 # print("pop:", population)
 # swap_lso(testArray1, population)
 # print("pop:", population)
