@@ -1072,26 +1072,26 @@ def fast_opt2(dmatrix, pop):
             pop[k][i:j] = np.flip(pop[k][i:j])
         pop[k][bestj:bestk] = np.flip(pop[k][bestj:bestk])
 
-
+@nb.njit()
 def opt3(dmatrix, ind):
     n = ind.shape[0]
     besti = -1
     bestj = -1
     bestk = -1
+    swapVersion = -1
     #i = 0, j = 1, k = 2
     bestFit = fitness(ind, dmatrix)
-    for i in range(n-2):
-        for j in range(i+1, n-1):
-            for k in range(j+1, n):
-                ival = ind[i]
-                jval = ind[j]
-                kval = ind[k]               
+    #Maintain a gap of 2 between indices, as flip does not do anything otherwise
+    for i in range(n-3):
+        for j in range(i+2, n-1):
+            for k in range(j+2, n+1):            
                 #Perm1 i,k
                 ind[i:k] = np.flip(ind[i:k])
                 fit = fitness(ind, dmatrix)
                 if fit < bestFit:
                     bestFit = fit
                     besti, bestj, bestk = i,j,k
+                    swapVersion = 0
                 ind[i:k] = np.flip(ind[i:k])
 
                 #Perm2 j,k
@@ -1100,6 +1100,7 @@ def opt3(dmatrix, ind):
                 if fit < bestFit:
                     bestFit = fit
                     besti, bestj, bestk = i,j,k
+                    swapVersion = 1
                 ind[j:k] = np.flip(ind[j:k])
 
                 #Perm3 i,j
@@ -1108,6 +1109,7 @@ def opt3(dmatrix, ind):
                 if fit < bestFit:
                     bestFit = fit
                     besti, bestj, bestk = i,j,k
+                    swapVersion = 2
                 ind[i:j] = np.flip(ind[i:j])
 
                 #Perm4 ij, jk
@@ -1117,6 +1119,7 @@ def opt3(dmatrix, ind):
                 if fit < bestFit:
                     bestFit = fit
                     besti, bestj, bestk = i,j,k
+                    swapVersion = 3
                 ind[j:k] = np.flip(ind[j:k])
                 ind[i:j] = np.flip(ind[i:j])
 
@@ -1127,6 +1130,7 @@ def opt3(dmatrix, ind):
                 if fit < bestFit:
                     bestFit = fit
                     besti, bestj, bestk = i,j,k
+                    swapVersion = 4
                 ind[j:k] = np.flip(ind[j:k])
                 ind[i:k] = np.flip(ind[i:k])
                 #Perm6 ik, ij
@@ -1136,27 +1140,54 @@ def opt3(dmatrix, ind):
                 if fit < bestFit:
                     bestFit = fit
                     besti, bestj, bestk = i,j,k
+                    swapVersion = 5
                 ind[i:j] = np.flip(ind[i:j])
                 ind[i:k] = np.flip(ind[i:k])
+                
                 #Perm7 ik, ij, jk
                 ind[i:k] = np.flip(ind[i:k])
                 ind[i:j] = np.flip(ind[i:j])
                 ind[j:k] = np.flip(ind[j:k])
-                
                 fit = fitness(ind, dmatrix)
                 if fit < bestFit:
                     bestFit = fit
                     besti, bestj, bestk = i,j,k
+                    swapVersion = 6
                 ind[j:k] = np.flip(ind[j:k])
                 ind[i:j] = np.flip(ind[i:j])
                 ind[i:k] = np.flip(ind[i:k])
+    if swapVersion == 0:
+        #Perm1 i,k
+        ind[besti:bestk] = np.flip(ind[besti:bestk])
+    elif swapVersion == 1:
+        #Perm2 j,k
+        ind[bestj:bestk] = np.flip(ind[bestj:bestk])
+    elif swapVersion == 2:
+        #Perm3 i,j
+        ind[besti:bestj] = np.flip(ind[besti:bestj])
+    elif swapVersion == 3:
+        #Perm4 ij, jk
+        ind[besti:bestj] = np.flip(ind[besti:bestj])
+        ind[bestj:bestk] = np.flip(ind[bestj:bestk])
+    elif swapVersion == 4:
+        #Perm5 ik, jk
+        ind[besti:bestk] = np.flip(ind[besti:bestk])
+        ind[bestj:bestk] = np.flip(ind[bestj:bestk])
+    elif swapVersion == 5:
+        #Perm6 ik, ij
+        ind[besti:bestk] = np.flip(ind[besti:bestk])
+        ind[besti:bestj] = np.flip(ind[besti:bestj])
+    elif swapVersion == 6:
+        #Perm7 ik, ij, jk
+        ind[besti:bestk] = np.flip(ind[besti:bestk])
+        ind[besti:bestj] = np.flip(ind[besti:bestj])
+        ind[bestj:bestk] = np.flip(ind[bestj:bestk])
+
 
     #Perform best 3-swap
-    ind[besti] = bestival
-    ind[bestj] = bestjval
-    ind[bestk] = bestkval
     print("best found fit:", bestFit)
     print("fit of result individual:", fitness(ind, dmatrix))
+
     
 
 #TODO: use fitness sharing for selection for island2
@@ -1262,16 +1293,16 @@ testArray1 = np.array([[0, 1.5, 2.4, 3.4],
     
 population = np.array([[0,1,2,3],[3,1,2,0]])
 a = np.array([0,1,2,3])
-optimizeBestInd(swap_lso, population, testArray1)
+optimizeBestInd(swap3_lso, population, testArray1)
 # print("pop:", population)
 # swap_lso(testArray1, population)
 # print("pop:", population)
 
 #print("dists", dist_to_pop(a,c))
 
-prog = TspProg()
-params = Parameters(lambd=500, mu=500, k=5, its=1000)
-prog.optimize("tour50.csv", params)
+#prog = TspProg()
+#params = Parameters(lambd=500, mu=500, k=5, its=1000)
+#prog.optimize("tour50.csv", params)
 #prog.optimize_old("tour200.csv", params)
 
 
