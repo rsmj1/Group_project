@@ -44,10 +44,10 @@ class TspProg:
         ##### GENERATION
         islandIters = 10
 
-        island1Size = int(lam * 0.1)
-        island1mu = int(mu * 0.1)
-        island2Size = int(lam * 0.9)
-        island2mu = int(mu * 0.9)
+        island1Size = int(lam * 0.5)
+        island1mu = int(mu * 0.5)
+        island2Size = int(lam * 0.5)
+        island2mu = int(mu * 0.5)
         island2pressure = 0.99
         exchangeRate = 0.2
         print("Initializing island populations")
@@ -296,7 +296,7 @@ def bestIndArg(population, distanceMatrix):
 #Swap Mutation
 #PMX
 #K-Tournament
-#fitness sharing elimination
+#fitness sharing selection
 def island1(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities):
     fast_opt2(distanceMatrix, population)
     for i in range(iters):
@@ -307,7 +307,8 @@ def island1(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities):
         num_parents = 2*mu
 
         ##### SELECTION
-        fitness_values = np.array([fitness(ind, distanceMatrix) for ind in population])
+        #fitness_values = np.array([fitness(ind, distanceMatrix) for ind in population])
+        fitness_values = compute_all_shared_fitnesses(population, distanceMatrix)
 
         selected_individuals = k_tournament_selection(population, num_parents, fitness_values, k)
         # Select from the population:
@@ -321,7 +322,7 @@ def island1(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities):
         swapMutation(population, alpha)
 
         fast_opt2(distanceMatrix, population)
-        population = shared_fitness_elimination(distanceMatrix, population, offspring, lambd)
+        population = elimination(distanceMatrix, population, offspring, lambd)
         it_end = time.time()
         print(i, "Island1 time:", it_end-it_start)
 
@@ -919,6 +920,85 @@ def swap_lso(dmatrix, ind):
     ind[bestk] = temp
     return ind
 
+@nb.njit()
+def swap3_lso(dmatrix, ind):
+    n = ind.shape[0]
+    bestival = -1
+    bestjval = -1
+    bestkval = -1
+    besti = -1
+    bestj = -1
+    bestk = -1
+    #i = 0, j = 1, k = 2
+    bestFit = fitness(ind, dmatrix)
+    for i in range(n-2):
+        for j in range(i+1, n-1):
+            for k in range(j+1, n):
+                ival = ind[i]
+                jval = ind[j]
+                kval = ind[k]               
+                #Perm1 021
+                ind[i] = ival
+                ind[j] = kval
+                ind[k] = jval
+                fit = fitness(ind, dmatrix)
+                if fit < bestFit:
+                    bestFit = fit
+                    bestival = ival
+                    bestjval = kval
+                    bestkval = jval
+                    besti, bestj, bestk = i,j,k
+                #Perm2 102
+                ind[i] = jval
+                ind[j] = ival
+                ind[k] = kval
+                if fit < bestFit:
+                    bestFit = fit
+                    bestival = jval
+                    bestjval = ival
+                    bestkval = kval
+                    besti, bestj, bestk = i,j,k
+                #Perm3 120
+                ind[i] = jval
+                ind[j] = kval
+                ind[k] = ival    
+                if fit < bestFit:
+                    bestFit = fit
+                    bestival = jval
+                    bestjval = kval
+                    bestkval = ival
+                    besti, bestj, bestk = i,j,k
+                #Perm4 201
+                ind[i] = kval
+                ind[j] = ival
+                ind[k] = jval    
+                if fit < bestFit:
+                    bestFit = fit
+                    bestival = kval
+                    bestjval = ival
+                    bestkval = jval
+                    besti, bestj, bestk = i,j,k   
+                #Perm5 210
+                ind[i] = kval
+                ind[j] = jval
+                ind[k] = ival    
+                if fit < bestFit:
+                    bestFit = fit
+                    bestival = kval
+                    bestjval = jval
+                    bestkval = ival
+                    besti, bestj, bestk = i,j,k
+                #Reset individual
+                ind[i] = ival
+                ind[j] = jval
+                ind[k] = kval
+    #Perform best 3-swap
+    ind[besti] = bestival
+    ind[bestj] = bestjval
+    ind[bestk] = bestkval
+    print("best found fit:", bestFit)
+    print("fit of result individual:", fitness(ind, dmatrix))
+
 
 @nb.njit()
 def fast_swap_lso(dmatrix, pop):
@@ -991,6 +1071,93 @@ def fast_opt2(dmatrix, pop):
             #Undo operation
             pop[k][i:j] = np.flip(pop[k][i:j])
         pop[k][bestj:bestk] = np.flip(pop[k][bestj:bestk])
+
+
+def opt3(dmatrix, ind):
+    n = ind.shape[0]
+    besti = -1
+    bestj = -1
+    bestk = -1
+    #i = 0, j = 1, k = 2
+    bestFit = fitness(ind, dmatrix)
+    for i in range(n-2):
+        for j in range(i+1, n-1):
+            for k in range(j+1, n):
+                ival = ind[i]
+                jval = ind[j]
+                kval = ind[k]               
+                #Perm1 i,k
+                ind[i:k] = np.flip(ind[i:k])
+                fit = fitness(ind, dmatrix)
+                if fit < bestFit:
+                    bestFit = fit
+                    besti, bestj, bestk = i,j,k
+                ind[i:k] = np.flip(ind[i:k])
+
+                #Perm2 j,k
+                ind[j:k] = np.flip(ind[j:k])
+                fit = fitness(ind, dmatrix)
+                if fit < bestFit:
+                    bestFit = fit
+                    besti, bestj, bestk = i,j,k
+                ind[j:k] = np.flip(ind[j:k])
+
+                #Perm3 i,j
+                ind[i:j] = np.flip(ind[i:j])
+                fit = fitness(ind, dmatrix)
+                if fit < bestFit:
+                    bestFit = fit
+                    besti, bestj, bestk = i,j,k
+                ind[i:j] = np.flip(ind[i:j])
+
+                #Perm4 ij, jk
+                ind[i:j] = np.flip(ind[i:j])
+                ind[j:k] = np.flip(ind[j:k])
+                fit = fitness(ind, dmatrix)
+                if fit < bestFit:
+                    bestFit = fit
+                    besti, bestj, bestk = i,j,k
+                ind[j:k] = np.flip(ind[j:k])
+                ind[i:j] = np.flip(ind[i:j])
+
+                #Perm5 ik, jk
+                ind[i:k] = np.flip(ind[i:k])
+                ind[j:k] = np.flip(ind[j:k])
+                fit = fitness(ind, dmatrix)
+                if fit < bestFit:
+                    bestFit = fit
+                    besti, bestj, bestk = i,j,k
+                ind[j:k] = np.flip(ind[j:k])
+                ind[i:k] = np.flip(ind[i:k])
+                #Perm6 ik, ij
+                ind[i:k] = np.flip(ind[i:k])
+                ind[i:j] = np.flip(ind[i:j])
+                fit = fitness(ind, dmatrix)
+                if fit < bestFit:
+                    bestFit = fit
+                    besti, bestj, bestk = i,j,k
+                ind[i:j] = np.flip(ind[i:j])
+                ind[i:k] = np.flip(ind[i:k])
+                #Perm7 ik, ij, jk
+                ind[i:k] = np.flip(ind[i:k])
+                ind[i:j] = np.flip(ind[i:j])
+                ind[j:k] = np.flip(ind[j:k])
+                
+                fit = fitness(ind, dmatrix)
+                if fit < bestFit:
+                    bestFit = fit
+                    besti, bestj, bestk = i,j,k
+                ind[j:k] = np.flip(ind[j:k])
+                ind[i:j] = np.flip(ind[i:j])
+                ind[i:k] = np.flip(ind[i:k])
+
+    #Perform best 3-swap
+    ind[besti] = bestival
+    ind[bestj] = bestjval
+    ind[bestk] = bestkval
+    print("best found fit:", bestFit)
+    print("fit of result individual:", fitness(ind, dmatrix))
+    
 
 #TODO: use fitness sharing for selection for island2
 #TODO: Implement 3-opt exhaustive for one individual
