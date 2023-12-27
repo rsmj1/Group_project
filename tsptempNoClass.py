@@ -7,6 +7,10 @@ import matplotlib.pyplot as plt
 import time
 import numba as nb
 
+
+
+#TODO: 1. Finish two islands - 2. pull out original optimize as secondary optimization function for test - 3. better LSO - 4. Fine tuning, alpha, other hyperparams - 5. Other operators? Than PMX? Than SwapMutation?
+
 # Modify the class name to match your student number.
 class TspProg:
 
@@ -16,6 +20,117 @@ class TspProg:
 	# The evolutionary algorithm's main loop
     def optimize(self, filename, params, testFile = None):
 		# Read distance matrix from file.		
+        file = open(filename)
+        distanceMatrix = np.loadtxt(file, delimiter=",")
+        file.close()
+		
+		# Your code here.
+
+        #We can use custom arrays instead of the csv files for testing
+        if testFile is not None:
+            distanceMatrix = testFile
+
+        #print("Distance Matrix: \n", distanceMatrix)
+		#Parameters
+        lam = params.la #Population size
+        mu = params.mu  #Offspring size  
+        k = params.k    #K-tournament selection param  
+        iterations = params.iterations
+        numCities = len(distanceMatrix[0])
+        alpha = 0.2
+
+        bestInd = np.random.permutation(numCities)
+        
+        ##### GENERATION
+        islandIters = 10
+
+        island1Size = int(lam * 0.1)
+        island1mu = int(mu * 0.1)
+        island2Size = int(lam * 0.9)
+        island2mu = int(mu * 0.9)
+        island2pressure = 0.99
+        exchangeRate = 0.2
+        print("Initializing island populations")
+        island1pop = nn_krandom_generation(distanceMatrix, island1Size)
+        island2pop = nn_krandom_generation(distanceMatrix, island2Size)
+
+
+
+        meanHist = []
+        minimumHist = []
+        i = 0
+        yourConvergenceTestsHere = True
+        while(yourConvergenceTestsHere):
+            it_start = time.time()
+            meanObjective = 0.0
+            bestObjective = 0.0
+            bestSolution = np.array([1,2,3,4,5])
+            print("Starting Islands")
+            island1pop = island1(distanceMatrix, island1pop, islandIters, island1Size, island1mu, k, alpha, numCities)
+            island2pop, island2pressure = island2(distanceMatrix, island2pop, islandIters, island2Size, island2mu, island2pressure, alpha, numCities)
+
+            optimizeBestInd(swap_lso, island1pop, distanceMatrix)
+            optimizeBestInd(opt2, island2pop, distanceMatrix)
+
+
+        
+
+            evalPop(island1pop, distanceMatrix, "Island1:")
+            evalPop(island2pop, distanceMatrix, "Island2:")
+
+            #Swap individuals based on fitness sharing distances
+            
+            island1candidateVals = compute_all_shared_fitnesses_island(island1pop, island2pop, distanceMatrix)
+            island2candidateVals = compute_all_shared_fitnesses_island(island2pop, island1pop, distanceMatrix)
+            i1migrators, i1indices = k_tournament_migration(island1pop, int(island1Size*exchangeRate), island1candidateVals, 5)
+            i2migrators, i2indices = k_tournament_migration(island2pop, int(island1Size*exchangeRate), island2candidateVals, 5)
+
+            island1pop[i1indices, :] = i2migrators
+            island2pop[i2indices, :] = i1migrators
+
+
+            population = np.vstack((island1pop, island2pop))
+
+			##### EVALUATION
+            objectiveValues = np.array([fitness(ind, distanceMatrix) for ind in population])
+            mean = np.mean(objectiveValues)
+            minimum = np.min(objectiveValues)
+            meanHist.append(mean)
+            minimumHist.append(minimum)
+            print("Iteration: ", i, ", Mean fitness:", mean, " Min fitness:", minimum, "Mean mutation rate:", alpha)
+            i += 1
+
+			# Call the reporter with:
+			#  - the mean objective function value of the population
+			#  - the best objective function value of the population
+			#  - a 1D numpy array in the cycle notation containing the best solution 
+			#    with city numbering starting from 0
+            meanObjective = mean
+            bestObjective = minimum
+            bestSolution = population[np.argmin(objectiveValues)]
+            timeLeft = self.reporter.report(meanObjective, bestObjective, bestSolution)
+
+            it_end = time.time()
+            print("Iteration time:", it_end-it_start)
+			#print("hello", timeLeft)
+            if i >= iterations:
+                bestInd = population[np.argmin(objectiveValues)]
+                break
+
+            if timeLeft < 0:
+                print("No time left, stopping!")
+                break
+            
+        print("Route of best individual:")
+        printIndividual(bestInd, alpha, distanceMatrix)
+        print("Final mean:", meanHist[len(meanHist)-1], ", Final best:", minimumHist[len(minimumHist)-1])
+        plotResuts(meanHist, minimumHist)
+		# Your code here.
+        return 0
+    
+
+    def optimize_old(self, filename, params, testFile = None):
+        # Read distance matrix from file.		
         file = open(filename)
         distanceMatrix = np.loadtxt(file, delimiter=",")
         file.close()
@@ -82,9 +197,12 @@ class TspProg:
 
 
             ##### SELECTION
+            #fitness_values = np.array([fitness(ind, distanceMatrix) for ind in population])
+            pop_fitness = np.apply_along_axis(fitness, 1, population, dmatrix=distanceMatrix)
+
             #selected_individuals = exp_selection(distanceMatrix, population, lam, num_parents) #Version WITHOUT geometric decay
-            #selected_individuals = exp_selection(distanceMatrix, population, lam, num_parents, selection_pressure) #Version WITH geometric decay
-            selected_individuals = k_tournament_selection(distanceMatrix, population, num_parents, k)
+            selected_individuals = exp_selection(distanceMatrix, population, lam, num_parents, pop_fitness, selection_pressure) #Version WITH geometric decay
+            #selected_individuals = k_tournament_selection(distanceMatrix, population, num_parents, fitness_values, k)
             #selected_individuals = stochastic_universal_sampling(distanceMatrix, population, num_parents)
             #Geometric decay
             if i % 3 == 0 and a > 0.0001: #Set how aggressive the decay should be
@@ -111,7 +229,7 @@ class TspProg:
 
 			##### ELIMINATION
             population = elimination(distanceMatrix, population, offspring, lam)
-
+            #population = shared_fitness_elimination(distanceMatrix, population, offspring, lam)
 
 			##### EVALUATION
             objectiveValues = np.array([fitness(ind, distanceMatrix) for ind in population])
@@ -157,6 +275,171 @@ class Parameters:
     self.k = k
     self.iterations = its
 
+def evalPop(population, distanceMatrix, name):
+    objectiveValues = np.array([fitness(ind, distanceMatrix) for ind in population])
+    mean = np.mean(objectiveValues)
+    minimum = np.min(objectiveValues)
+    print(name, "Mean fitness:", mean, " Min fitness:", minimum)
+
+
+def optimizeBestInd(optimizer, population, distanceMatrix):
+    i = bestIndArg(population, distanceMatrix)
+    bestInd = population[i]
+    population[i] = optimizer(distanceMatrix, bestInd)
+
+def bestIndArg(population, distanceMatrix):
+    fitnesses = np.array([fitness(ind, distanceMatrix) for ind in population])
+    return np.argmin(fitnesses)
+
+
+#Island with:
+#Swap Mutation
+#PMX
+#K-Tournament
+#fitness sharing elimination
+def island1(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities):
+    fast_opt2(distanceMatrix, population)
+    for i in range(iters):
+        it_start = time.time()
+
+        #Create offspring
+        offspring = np.empty((mu, numCities), dtype = int)
+        num_parents = 2*mu
+
+        ##### SELECTION
+        fitness_values = np.array([fitness(ind, distanceMatrix) for ind in population])
+
+        selected_individuals = k_tournament_selection(population, num_parents, fitness_values, k)
+        # Select from the population:
+        for j in range(mu):
+            
+            p1 = selected_individuals[2*j]
+            p2 = selected_individuals[2*j + 1]
+            ##### RECOMBINATION 
+            offspring[j] = pmx(p1, p2, alpha, alpha)
+        swapMutation(offspring, alpha)
+        swapMutation(population, alpha)
+
+        fast_opt2(distanceMatrix, population)
+        population = shared_fitness_elimination(distanceMatrix, population, offspring, lambd)
+        it_end = time.time()
+        print(i, "Island1 time:", it_end-it_start)
+
+
+    return population
+
+
+
+
+#Island with:
+#Inverse Mutation
+#TPX
+#Exp_selection
+#fitness sharing selection
+def island2(distanceMatrix, population, iters, lambd, mu, selection_pressure, alpha, numCities):
+    a = 0.99
+    fast_swap_lso(distanceMatrix, population)
+    for i in range(iters):
+        it_start = time.time()
+
+        #Create offspring
+        offspring = np.empty((mu, numCities), dtype = int)
+        num_parents = 2*mu
+
+        ##### SELECTION
+        #pop_fitness = np.apply_along_axis(fitness, 1, population, dmatrix=distanceMatrix)
+        fitness_values = compute_all_shared_fitnesses(population, distanceMatrix)
+        #selected_individuals = exp_selection(distanceMatrix, population, lambd, num_parents, fitness_values, selection_pressure) #Version WITH geometric decay
+        selected_individuals = k_tournament_selection(population, num_parents, fitness_values, 5)
+        if i % 2 == 0 and a > 0.0001: #Set how aggressive the decay should be
+            selection_pressure *= a
+        else:
+            selection_pressure  = 0.2
+            
+        # Select from the population:
+        for j in range(mu):
+            p1 = selected_individuals[2*j]
+            p2 = selected_individuals[2*j + 1]
+            ##### RECOMBINATION 
+            offspring[j] = tpx(p1, p2, alpha, alpha)
+
+        invMutation(offspring, alpha)
+        invMutation(population, alpha)
+
+        fast_swap_lso(distanceMatrix, population)
+
+        population = elimination(distanceMatrix, population, offspring, lambd)
+        it_end = time.time()
+        print(i, "Island2 time:", it_end-it_start)
+
+
+    return population, selection_pressure
+
+
+
+
+
+
+
+
+
+
+
+
+
+def k_tournament_migration(population, num_parents, fitness_values, k=5):
+    """
+    Perform K-Tournament Selection to select parents from the population.
+
+    Args:
+        population (numpy.ndarray): The population to select from.
+        fitness_values (numpy.ndarray): An array of fitness values for each individual.
+        num_parents (int): The number of parents to select.
+        k (int): The size of each tournament.
+
+    Returns:
+        numpy.ndarray: An array of selected parents from the population.
+    """
+
+    #print("fitness:", fitness_values)
+    #fitness_values = compute_all_shared_fitnesses(population, distance_matrix)
+    #print("shared:", shared_values)
+    selected_parents = []
+    selected_indices = []
+    for _ in range(num_parents):
+        tournament_indices = np.random.choice(len(population), k, replace=False)
+        tournament_fitness = fitness_values[tournament_indices]
+        winner_index = tournament_indices[np.argmin(tournament_fitness)]
+        while winner_index in selected_indices:
+            tournament_indices = np.random.choice(len(population), k, replace=False)
+            tournament_fitness = fitness_values[tournament_indices]
+            winner_index = tournament_indices[np.argmin(tournament_fitness)]
+        selected_parents.append(population[winner_index])
+        selected_indices.append(winner_index)
+
+    return np.array(selected_parents), np.array(selected_indices)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 @nb.njit()
 def fitness(individual, dmatrix):
 	n = len(dmatrix[0])
@@ -180,25 +463,47 @@ for TSP, it can be difficult to get an actual distance that satisfies triangle i
 
 
 @nb.njit()
-def shared_fitness_elimination():
-    return
+def shared_fitness_elimination(dmatrix, population, offspring, num_survivors):
+    individuals = np.vstack((population, offspring))
+    n = population.shape[1]
+    survivors = np.empty((num_survivors, n), dtype=np.int64)
+    num_survivors = survivors.shape[0]
+
+    edges = np.zeros(1000000, dtype=np.int64)
+    idx = compute_fitness_vals_best_id(individuals, None, dmatrix, edges)
+    survivors[0] = individuals[idx,:]
+
+    for i in range(1, num_survivors):
+        edges[:] = 0
+        idx = compute_fitness_vals_best_id(individuals, survivors[0:i,:], dmatrix, edges)
+        survivors[i] = individuals[idx,:]
+    return survivors
 
 
 
 @nb.njit()
-def compute_fitness_vals_best_id(individuals, survivors, dmatrix):
+def compute_fitness_vals_best_id(individuals, survivors, dmatrix, edges):
     num_individuals = individuals.shape[0]
     best_val = np.inf
     best_index = 0
     for j in range(num_individuals):
-        fitness_val = shared_fitness(individuals[j], dmatrix, survivors, 1)
+        fitness_val = shared_fitness(individuals[j], dmatrix, edges, survivors, 1)
         if fitness_val < best_val:
             best_val = fitness_val
             best_index = j
-    return best_index
+    return int(best_index)
 
 
-
+@nb.njit()
+def compute_all_shared_fitnesses_island(population1, population2, dmatrix):
+    n = population1.shape[0]
+    edges = np.zeros(1000000, dtype=np.int64)
+    fitnesses = np.empty(n)
+    for i in range(n):
+        route = population1[i]
+        fitnesses[i] = shared_fitness(route, dmatrix, edges, population2)
+        edges[:] = 0
+    return fitnesses
 
 @nb.njit()
 def compute_all_shared_fitnesses(population, dmatrix):
@@ -207,14 +512,17 @@ def compute_all_shared_fitnesses(population, dmatrix):
     fitnesses = np.empty(n)
     for i in range(n):
         route = population[i]
-        fitnesses[i] = shared_fitness(route, dmatrix, population, edges)
+        fitnesses[i] = shared_fitness(route, dmatrix, edges, population)
         edges[:] = 0
     return fitnesses
 
 
 
 @nb.njit()
-def shared_fitness(individual, dmatrix, population, edges, betaInit=0):
+def shared_fitness(individual, dmatrix, edges, population=None, betaInit=0):
+    if population is None:
+        return fitness(individual, dmatrix)
+
     n = individual.shape[0]
     alpha = 1
     sigma =  (n-1) * 0.6 #We need a distance function!
@@ -300,9 +608,6 @@ def invMutation(inds, a):
             inds[k][i:j] = np.flip(inds[k][i:j])
 
 
-
-
-
 #Mutate inplace, so returns nothing - SWAP MUTATION
 @nb.njit()
 def swapMutation(inds, a):
@@ -379,116 +684,11 @@ def tpx(p1, p2, a1, a2):
 
 
 
-def edge_crossover(parent1, parent2):
-    """
-    Perform Edge Crossover on two individuals.
-
-    Args:
-        parent1 (Individual): The first parent individual.
-        parent2 (Individual): The second parent individual.
-
-    Returns:
-        Individual: A new individual created through Edge Crossover.
-    """
-    candidate1 = list(parent1.route)
-    candidate2 = list(parent2.route)
-    if len(candidate1) != len(candidate2):
-        print('Candidate solutions must have the same length')
-        return 0
-
-    length = len(candidate1)
-    neighbor_lists = {}
-
-    for node in range(length):
-        neighbor_lists[node] = set([candidate1[(node + 1) % length], candidate1[(node - 1) % length]])
-
-    child = [None] * length
-    current_node = candidate1[0]
-
-    for i in range(length):
-        child[i] = current_node
-        for neighbor in neighbor_lists:
-            neighbor_lists[neighbor].discard(current_node)
-        next_nodes = list(neighbor_lists[current_node])
-
-        if next_nodes:
-            current_node = np.random.choice(next_nodes)
-        else:
-            remaining_nodes = set(candidate1) - set(child)
-            if remaining_nodes:
-                current_node = np.random.choice(list(remaining_nodes))
-
-    return Individual(route=np.array(child), alpha=combineAlphas(parent1.alpha, parent2.alpha))
-
-
-
 ### PMX ###
-def pmx(candidate11, candidate22, a1, a2):
-    candidate1 = list(candidate11)
-    candidate2 = list(candidate22)
-    if len(candidate1) != len(candidate2):
-        print('Candidate solutions must have same length')
-        return 0
-
-    length = len(candidate1)
-    index_set = set()
-    full_set = set(range(length))
-
-    # Choose our crossover points:
-    my_range = np.random.choice(length,(2),False)
-    a = my_range[0]
-    b = my_range[1]
 
 
-    #print(a,b)
-    for j in range(a,b):
-        index_set.add(j)
 
-    # Initialise an empty offspring:
-    offspring = [None] * (length-1)
-    # Now lets fill up the offspring:
-    if a>b:
-        middle_section1 = candidate1[b:a+1]
-        middle_section2 = candidate2[b:a+1]
-
-        offspring[b:a] = middle_section1
-        for j in range(b,a+1):
-         index_set.add(j)
-    elif b>a:
-        middle_section1 = candidate1[a:b+1]
-        middle_section2 = candidate2[a:b+1]
-
-        offspring[a:b] = middle_section1
-        for j in range(a,b):
-            index_set.add(j+1)
-    for count, item in enumerate(middle_section2):
-        if item not in set(middle_section1):
-            # Find which item is in its place:
-            item2 = middle_section1[count]
-            # Now find where in candidate2 does item2 reside:
-            index = candidate2.index(item2)
-            # We replace offspring[index] with the original item IF IT ISN'T ALREADY OCCUPIED:
-            recursive_fill(index,index_set,item,offspring,candidate2)
-
-    # Finally, fill in the blanks:
-    for final_item in full_set^index_set:
-        offspring[final_item] = candidate2[final_item]
-    return np.array(offspring)
-### END PMX
-
-
-def recursive_fill(index, index_set, item, offspring, candidate):
-    if index not in index_set:
-        offspring[index] = item
-        index_set.add(index)
-    else:
-        new_item = offspring[index]
-        new_index = candidate.index(new_item)
-        recursive_fill(new_index, index_set, item, offspring, candidate)
-
-
-#Faster for bigger arrays
-def pmx2(candidate1, candidate2, a1, a2):
+def pmx(candidate1, candidate2, a1, a2):
     length = candidate1.size
    # Choose our crossover points:
     a = np.random.randint(length-1)
@@ -499,34 +699,12 @@ def pmx2(candidate1, candidate2, a1, a2):
     index_map = np.arange(length)
     index_map[candidate1] = np.arange(length)
     loop_indexes = np.concatenate([np.arange(0,a), np.arange(b, length)])
-    for i in loop_indexes:
-        curr_city = candidate2[i]
-        while curr_city in interval:
-            new_index = index_map[curr_city]
-            curr_city = candidate2[new_index]
-        offspring[i] = curr_city
-
-    #print("offspring:", offspring)
-    return offspring
-
-
-def pmx2_loop(candidate1, candidate2, a1, a2):
-    length = candidate1.size
-   # Choose our crossover points:
-    a = np.random.randint(length-1)
-    b = np.random.randint(a+1, length)
-    interval = candidate1[a:b]
-    offspring = np.empty(length, dtype=np.int64)
-    offspring[a:b] = interval
-    index_map = np.arange(length)
-    index_map[candidate1] = np.arange(length)
-    loop_indexes = np.concatenate([np.arange(0,a), np.arange(b, length)])
-    offspring = pmx2loop(index_map, candidate2, offspring, loop_indexes, interval)
+    offspring = pmxloop(index_map, candidate2, offspring, loop_indexes, interval)
 
     #print("offspring:", offspring)
     return offspring
 @nb.njit()
-def pmx2loop(index_map, candidate2, offspring, loop_indexes, interval):
+def pmxloop(index_map, candidate2, offspring, loop_indexes, interval):
     for i in loop_indexes:
         curr_city = candidate2[i]
         while curr_city in interval:
@@ -626,7 +804,7 @@ def random_generation(distance_matrix, lam):
 
 
 ########################### Selection ################################
-def k_tournament_selection(distance_matrix, population, num_parents, k=5):
+def k_tournament_selection(population, num_parents, fitness_values, k=5):
     """
     Perform K-Tournament Selection to select parents from the population.
 
@@ -640,9 +818,8 @@ def k_tournament_selection(distance_matrix, population, num_parents, k=5):
         numpy.ndarray: An array of selected parents from the population.
     """
 
-    #fitness_values = np.array([fitness(ind, distance_matrix) for ind in population])
     #print("fitness:", fitness_values)
-    fitness_values = compute_all_shared_fitnesses(population, distance_matrix)
+    #fitness_values = compute_all_shared_fitnesses(population, distance_matrix)
     #print("shared:", shared_values)
     selected_parents = []
     for _ in range(num_parents):
@@ -687,7 +864,7 @@ def stochastic_universal_sampling(distance_matrix, population, num_parents):
     return np.array(selected_parents)
 
 
-def exp_selection(dmatrix, pop, l, mu, selection_pressure=0.01):
+def exp_selection(dmatrix, pop, l, mu, pop_fitness, selection_pressure=0.01):
     # Create the distribution:
     a = math.log(selection_pressure)/(l-1)
     beta = -1/a
@@ -695,7 +872,6 @@ def exp_selection(dmatrix, pop, l, mu, selection_pressure=0.01):
     data = X.rvs(mu)
     index = [int(a) for a in np.floor(data)]
     
-    pop_fitness = np.apply_along_axis(fitness, 1, pop, dmatrix=dmatrix)
     order = np.argsort(pop_fitness)
     output = np.array([pop[order[i]] for i in index])
 
@@ -717,29 +893,31 @@ def elimination(dmatrix, pop, offspring, l):
 
 
 @nb.njit()
-def swap_lso(dmatrix, pop):
-    for i in range(pop.shape[0]):
-        curr_route = pop[i]
-        bestFit = fitness(curr_route, dmatrix)
-        bestj = -1
-        bestk = -1
-        for j in range(pop.shape[1]):
-            for k in range(j, pop.shape[1]):
-                temp = curr_route[j]
-                curr_route[j] = curr_route[k]
-                curr_route[k] = temp
-                fit = fitness(curr_route, dmatrix)
-                if fit < bestFit:
-                    bestFit = fit
-                    bestj = j
-                    bestk = k
-                #unswap for next iteration
-                temp = curr_route[j]
-                curr_route[j] = curr_route[k]
-                curr_route[k] = temp
-        temp = pop[i, bestj]
-        pop[i,bestj] = pop[i,bestk]
-        pop[i,bestk] = temp 
+def swap_lso(dmatrix, ind):
+    curr_route = ind
+    bestFit = fitness(curr_route, dmatrix)
+    bestj = -1
+    bestk = -1
+    for j in range(ind.shape[0]):
+        for k in range(j, ind.shape[0]):
+            temp = curr_route[j]
+            curr_route[j] = curr_route[k]
+            curr_route[k] = temp
+            fit = fitness(curr_route, dmatrix)
+            if fit < bestFit:
+                bestFit = fit
+                print("BestFit:", bestFit)
+
+                bestj = j
+                bestk = k
+            #unswap for next iteration
+            temp = curr_route[j]
+            curr_route[j] = curr_route[k]
+            curr_route[k] = temp
+    temp = ind[bestj]
+    ind[bestj] = ind[bestk]
+    ind[bestk] = temp
+    return ind
 
 
 @nb.njit()
@@ -769,6 +947,53 @@ def fast_swap_lso(dmatrix, pop):
         temp = pop[i, bestj]
         pop[i,bestj] = pop[i,bestk]
         pop[i,bestk] = temp 
+
+@nb.njit()
+def opt2(dmatrix, ind):
+    curr_route = ind
+    bestFit = fitness(curr_route, dmatrix)
+    bestj = -1
+    bestk = -1
+    for j in range(ind.shape[0]):
+        for k in range(j, ind.shape[0]):
+            ind[j:k] = np.flip(ind[j:k])
+            fit = fitness(curr_route, dmatrix)
+            if fit < bestFit:
+                bestFit = fit
+                bestj = j
+                bestk = k
+            #unswap for next iteration
+            ind[j:k] = np.flip(ind[j:k])
+
+    ind[bestj:bestk] = np.flip(ind[bestj:bestk])
+    print("BestFit:", bestFit)
+    return ind
+
+
+@nb.njit()
+def fast_opt2(dmatrix, pop):
+    for k in range(pop.shape[0]):
+        curr_route = pop[k]
+        bestFit = fitness(curr_route, dmatrix)
+        bestj = -1
+        bestk = -1
+        iters = 5000
+        for a in range(iters):
+            i = np.random.randint(0,len(pop[k])-1)
+            j = np.random.randint(i+1,len(pop[k]))
+            #individual.route[i:j] = individual.route[i:j][::-1]
+            pop[k][i:j] = np.flip(pop[k][i:j])
+            fit = fitness(curr_route, dmatrix)
+            if fit < bestFit:
+                bestFit = fit
+                bestj = i
+                bestk = j
+            #Undo operation
+            pop[k][i:j] = np.flip(pop[k][i:j])
+        pop[k][bestj:bestk] = np.flip(pop[k][bestj:bestk])
+
+#TODO: use fitness sharing for selection for island2
+#TODO: Implement 3-opt exhaustive for one individual
 
 
 ######################## Mutation Rate Related Stuff #########################
@@ -863,12 +1088,14 @@ def plotResuts(mean, min):
 # edges = np.empty(1000000)
 # print("dist:", common_edges_dist(a, b, edges, 1))
 
-# testArray1 = np.array([[0, 1.5, 2.4, 3.4],
-#                        [2.8, 0, 5.1, 1.3],
-# 					   [10., 5.4, 0, 9.5],
-#                        [6.6, 3.8, 9.3, 0]])
+testArray1 = np.array([[0, 1.5, 2.4, 3.4],
+                       [2.8, 0, 5.1, 1.3],
+					   [10., 5.4, 0, 9.5],
+                       [6.6, 3.8, 9.3, 0]])
     
-# population = np.array([[0,1,2,3],[3,1,2,0]])
+population = np.array([[0,1,2,3],[3,1,2,0]])
+a = np.array([0,1,2,3])
+optimizeBestInd(swap_lso, population, testArray1)
 # print("pop:", population)
 # swap_lso(testArray1, population)
 # print("pop:", population)
@@ -876,15 +1103,23 @@ def plotResuts(mean, min):
 #print("dists", dist_to_pop(a,c))
 
 prog = TspProg()
-params = Parameters(lambd=500, mu=500, k=5, its=2000)
-prog.optimize("tour1000.csv", params)
+params = Parameters(lambd=500, mu=500, k=5, its=1000)
+prog.optimize("tour50.csv", params)
+#prog.optimize_old("tour200.csv", params)
+
 
 
 
 
 # tour50: simple greedy heuristic 27723
+# 7.5%: 25643
 # tour100: simple greedy heuristic 90851
+# 7.5%: 84037
 # tour200: simple greedy heuristic 39745
+# 7.5%: 36764
 # tour500: simple greedy heuristic 157034
+# 7.5%: 145256
 # tour750: simple greedy heuristic 197541
+# 7.5%: 182725
 # tour1000: simple greedy heuristic 195848
+# 7.5%: 181159
