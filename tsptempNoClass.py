@@ -42,7 +42,7 @@ class TspProg:
         bestInd = np.random.permutation(numCities)
         
         ##### GENERATION
-        islandIters = 5
+        islandIters = 1
 
         island1Size = int(lam/3)
         island1mu = int(mu/3)
@@ -91,15 +91,15 @@ class TspProg:
             island3pop[i3indices, :] = i2migrators
             bestInd1 = optimizeBestInd(opt2_lso, island1pop, distanceMatrix)
             bestInd2 = optimizeBestInd(swap_lso, island2pop, distanceMatrix)
-            bestInd3 = optimizeBestInd(swap_lso, island3pop, distanceMatrix)
+            bestInd3 = optimizeBestInd(fast_swap3_lso, island3pop, distanceMatrix)
 
-            i1s = worstIndsArgs(island1pop, distanceMatrix, 3)
-            i2s = worstIndsArgs(island2pop, distanceMatrix, 3)
-            i3s = worstIndsArgs(island3pop, distanceMatrix, 3)
+            i1s = worstIndsArgs(island1pop, distanceMatrix, 1)
+            i2s = worstIndsArgs(island2pop, distanceMatrix, 1)
+            i3s = worstIndsArgs(island3pop, distanceMatrix, 1)
 
-            island1pop[i1s,:] = np.vstack((bestInd1, bestInd2, bestInd3))
-            island2pop[i2s,:] = np.vstack((bestInd1, bestInd2, bestInd3))
-            island3pop[i3s,:] = np.vstack((bestInd1, bestInd2, bestInd3))
+            island1pop[i1s,:] = bestInd3
+            island2pop[i2s,:] = bestInd1
+            island3pop[i3s,:] = bestInd2
 
 
 
@@ -330,21 +330,23 @@ def island1(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities):
         num_parents = 2*mu
 
         ##### SELECTION
-        #fitness_values = np.array([fitness(ind, distanceMatrix) for ind in population])
-        fitness_values = compute_all_shared_fitnesses(population, distanceMatrix)
+        fitness_values = np.array([fitness(ind, distanceMatrix) for ind in population])
+        #fitness_values = compute_all_shared_fitnesses(population, distanceMatrix)
 
         selected_individuals = k_tournament_selection(population, num_parents, fitness_values, k)
         # Select from the population:
         for j in range(mu):
-            
             p1 = selected_individuals[2*j]
             p2 = selected_individuals[2*j + 1]
             ##### RECOMBINATION 
             offspring[j] = pmx(p1, p2, alpha, alpha)
+
         swapMutation(offspring, alpha)
         swapMutation(population, alpha)
-
-        fast_opt2_lso(distanceMatrix, population)
+        
+        optimizees = k_tournament_selection(population, 10, fitness_values, k)
+        apply_lso_iters(fast_opt2_lso, distanceMatrix, optimizees, 10)
+        population = np.vstack((population, optimizees))
         population = elimination(distanceMatrix, population, offspring, lambd)
         it_end = time.time()
         print(i, "Island1 time:", it_end-it_start)
@@ -371,8 +373,8 @@ def island2(distanceMatrix, population, iters, lambd, mu, selection_pressure, al
         num_parents = 2*mu
 
         ##### SELECTION
-        #pop_fitness = np.apply_along_axis(fitness, 1, population, dmatrix=distanceMatrix)
-        fitness_values = compute_all_shared_fitnesses(population, distanceMatrix)
+        fitness_values = np.apply_along_axis(fitness, 1, population, dmatrix=distanceMatrix)
+        #fitness_values = compute_all_shared_fitnesses(population, distanceMatrix)
         selected_individuals = exp_selection(distanceMatrix, population, lambd, num_parents, fitness_values, selection_pressure) #Version WITH geometric decay
         #selected_individuals = k_tournament_selection(population, num_parents, fitness_values, 5)
         if i % 2 == 0 and a > 0.0001: #Set how aggressive the decay should be
@@ -434,7 +436,7 @@ def island3(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities):
 
         population = elimination(distanceMatrix, population, offspring, lambd)
         it_end = time.time()
-        print(i, "Island2 time:", it_end-it_start)
+        print(i, "Island3 time:", it_end-it_start)
 
     return population
 
@@ -954,6 +956,19 @@ def elimination(dmatrix, pop, offspring, l):
     return choices
 
 
+
+@nb.njit()
+def apply_lso_iters(lso, dmatrix, pop, iters):
+    for i in range(iters):
+        lso(dmatrix, pop)
+
+@nb.njit()
+def apply_single_lso_iters(lso, dmatrix, ind, iters):
+    curr_ind = ind
+    for i in range(iters):
+        curr_ind = lso(dmatrix, curr_ind)
+    return curr_ind
+
 @nb.njit()
 def swap_lso(dmatrix, ind):
     curr_route = ind
@@ -1051,7 +1066,7 @@ def fast_swap3_lso(dmatrix, ind):
     #print("fit of ind before", fitness(ind, dmatrix))
     #i = 0, j = 1, k = 2
     bestFit = fitness(ind, dmatrix)
-    iters = 3000
+    iters = 2000
     for iter in range(iters):
         i = np.random.randint(n-2)
         j = np.random.randint(i+1, n-1)
@@ -1269,7 +1284,7 @@ def fast_opt3_lso(dmatrix, ind):
     #i = 0, j = 1, k = 2
     bestFit = fitness(ind, dmatrix)
     #Maintain a gap of 2 between indices, as flip does not do anything otherwise
-    iters = 3000
+    iters = 2000
     for iter in range(iters):
         i = np.random.randint(n-3)
         j = np.random.randint(i+2, n-1)
@@ -1459,7 +1474,7 @@ a = np.array([0,1,2,3])
 
 prog = TspProg()
 params = Parameters(lambd=900, mu=900, k=5, its=1000)
-prog.optimize("tour200.csv", params)
+prog.optimize("tour50.csv", params)
 #prog.optimize_old("tour200.csv", params)
 
 
