@@ -323,7 +323,7 @@ def worstIndsArgs(population, distanceMatrix, n):
 #K-Tournament
 #fitness sharing selection
 def island1(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities, nns):
-    alpha = 0.2
+    alpha = 0.4
     fast_swap_lso(distanceMatrix, population)
     for i in range(iters):
         it_start = time.time()
@@ -710,12 +710,15 @@ def IRGIBNNM(inds, a, nns):
             nn = nns[rci]
 
             nnidx = np.where(inds[k]==nn)[0][0]
-            randOffsetIndex = (np.random.randint(-3, 4)) % (n-1)
-            swapCityIndex = (nnidx + randOffsetIndex) % (n-1)
-            swapCity = inds[k, swapCityIndex]
-
-            inds[k, swapCityIndex] = rci
-            inds[k, rcidx] = swapCity
+            #If random city is left of nn, get -1, otherwise +1
+            offsetSide = np.sign(rcidx - nnidx)
+            swapCityIndex = (nnidx + offsetSide) % n
+            if offsetSide > 0:
+                inds[k][nnidx+2:rcidx+1] = inds[k][nnidx+1:rcidx]
+                inds[k, swapCityIndex] = rci
+            else:
+                inds[k][rcidx:nnidx] = inds[k][rcidx+1:nnidx+1]
+                inds[k, swapCityIndex] = rci
 
 
 @nb.njit()
@@ -738,6 +741,12 @@ def RGIBNNM(inds, a, nns):
             else:
                 inds[k][rcidx:nnidx] = inds[k][rcidx+1:nnidx+1]
                 inds[k, swapCityIndex] = rci
+
+
+
+def SBM():
+    mutators = 4
+    return
 ######################### RECOMBINATIONS ###############################
 
 #Ordered two-point crossover for permutations
@@ -856,8 +865,35 @@ def nn_krandom_generation(distance_matrix, lam):
     return initial_population
 
 
+@nb.njit()
+def random_less_inf_gen(distance_matrix, lam):
+    num_cities = len(distance_matrix[0])
+    initial_population = np.empty((lam, num_cities), dtype=np.int64)
+    for route in range(lam):
+        city_status = np.ones(num_cities, dtype=np.bool_)
+        first_city = np.random.randint(num_cities)
+        prev_city = first_city
+        initial_population[route, 0] = first_city
+        city_status[first_city] = False
+        for j in range(1, num_cities):
+            unvisited_cities = np.nonzero(city_status)[0]
+            next_city = choose_candidate(distance_matrix, unvisited_cities, 10, prev_city)
+            prev_city = next_city
+            initial_population[route, j] = next_city
+            city_status[next_city] = False
+    return initial_population    
 
-
+@nb.njit()
+def choose_candidate(dmatrix, candidates, n, prev):
+    bestCand = -1
+    bestVal = np.inf
+    for i in range(n):
+        candidate = np.random.choice(candidates)
+        candidateVal = dmatrix[prev, candidate]
+        if candidateVal <= bestVal:
+            bestCand = candidate
+            bestVal = candidateVal
+    return bestCand
 
 
 def check_perm(array):
@@ -879,7 +915,6 @@ def random_generation(distance_matrix, lam):
         tour = np.random.permutation(num_cities)
         inital_population[i,:] = tour
     return inital_population
-
 
 
 
@@ -1494,58 +1529,17 @@ def plotResuts(mean, min):
 ############################## RUN SETUP ################################
 
 
-
-# testArray2 = np.array([[0, 1.5, 2.4, 3.4],
-#                        [2.8, 0, np.inf, 1.3],
-# 					   [10., 5.4, 0, 9.5],
-#                        [np.inf, 3.8, 9.3, 0]])
-
-
-# testL = 5000
-# testM = 2500
-# file = open("tour50.csv")
-# distanceMatrix = np.loadtxt(file, delimiter=",")
-# #distanceMatrix[distanceMatrix==np.inf] = 0
-# file.close()
-# nn_krandom_generation(distanceMatrix, 1000)
-# testPop = random_generation(distanceMatrix, testL)
-# testOff = random_generation(distanceMatrix, testL)
-# testPop2 = np.empty(testL, dtype = Individual)
-# testOff2 = np.empty(testL, dtype = Individual)
-# for ro, route in enumerate(testPop):
-#         testPop2[ro] = Individual(route=route)
-# for ro1, route1 in enumerate(testOff):
-#         testOff2[ro1] = Individual(route=route1)
-
-#testArray = np.array([1,2,3,4,5,6,7,8])
-#testIndex = [2,2,3,4,5]
-#print("Indexing:", testArray[testIndex])
-
-#tpx(testInd, testInd2)
-# a = np.array([0,1,2,3,4,5,6,7,8])
-# b = np.array([8,2,6,7,1,5,4,0,3])
-# c = np.arange(9)
-# d = np.zeros(9, dtype=np.int64) +9
-# d[3:7] = a[3:7]
-# print("a  :", a)
-# print("b  :", b)
-# print("slic", d)
-# print("idx:", c)
-# print("pmx:", pmx(a, b, 0, 0)+1)
-# print("pmx2", pmx2(a,b,0,0)+1)
-# print("ploo", pmx2_loop(a,b,0,0)+1)
-    
-# a = np.array([0,1,2,3,4,5,6,7,8])
-# b = np.array([1,2,6,7,8,5,4,3,0])
-# c = np.array([[1,2,6,7,8,5,4,3,0], [0,1,2,3,4,5,6,7,8], [8,7,6,5,4,3,2,1,0]])
-# edges = np.empty(1000000)
-# print("dist:", common_edges_dist(a, b, edges, 1))
-
 testArray1 = np.array([[0, 1.5, 4.8, 3.4],
                        [2.8, 0, 6.4, 8.7],
 					   [10., 5.4, 0, 1.],
                        [10., 3.8, 9.3, 0]])
-    
+
+testArray2 = np.array([[0, np.inf, 4.8, 3.4],
+                       [2.8, 0, 6.4, 8.7],
+					   [np.inf, 5.4, 0, 1.],
+                       [10., 3.8, np.inf, 0]])
+population = random_less_inf_gen(testArray2, 10)
+print("population:", population)
 population = np.array([[0,1,2,3],[3,1,2,0]])
 #a = np.array([0,1,2,3])
 #dmatrixmod = testArray1.copy()
@@ -1564,7 +1558,7 @@ population = np.array([[0,1,2,3],[3,1,2,0]])
 
 prog = TspProg()
 params = Parameters(lambd=900, mu=900, k=5, its=1000)
-prog.optimize("tour50.csv", params)
+prog.optimize("tour200.csv", params)
 #prog.optimize_old("tour200.csv", params)
 
 
