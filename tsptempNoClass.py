@@ -42,7 +42,7 @@ class TspProg:
         bestInd = np.random.permutation(numCities)
         
         ##### GENERATION
-        islandIters = 1
+        islandIters = 5
 
         island1Size = int(lam/3)
         island1mu = int(mu/3)
@@ -89,7 +89,7 @@ class TspProg:
             island1pop[i1indices, :] = i3migrators
             island2pop[i2indices, :] = i1migrators
             island3pop[i3indices, :] = i2migrators
-            bestInd1 = optimizeBestInd(opt2_lso, island1pop, distanceMatrix)
+            bestInd1 = optimizeBestInd(fast_opt3_lso, island1pop, distanceMatrix)
             bestInd2 = optimizeBestInd(swap_lso, island2pop, distanceMatrix)
             bestInd3 = optimizeBestInd(fast_swap3_lso, island3pop, distanceMatrix)
 
@@ -321,7 +321,7 @@ def worstIndsArgs(population, distanceMatrix, n):
 #K-Tournament
 #fitness sharing selection
 def island1(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities):
-    fast_opt2_lso(distanceMatrix, population)
+    fast_swap_lso(distanceMatrix, population)
     for i in range(iters):
         it_start = time.time()
 
@@ -343,11 +343,11 @@ def island1(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities):
 
         swapMutation(offspring, alpha)
         swapMutation(population, alpha)
-        
-        optimizees = k_tournament_selection(population, 10, fitness_values, k)
-        apply_lso_iters(fast_opt2_lso, distanceMatrix, optimizees, 10)
-        population = np.vstack((population, optimizees))
+
+        fast_swap_lso(distanceMatrix, population)
+
         population = elimination(distanceMatrix, population, offspring, lambd)
+
         it_end = time.time()
         print(i, "Island1 time:", it_end-it_start)
 
@@ -409,7 +409,7 @@ def island2(distanceMatrix, population, iters, lambd, mu, selection_pressure, al
 #fitness sharing selection
 def island3(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities):
     alpha = 0.4
-    fast_opt2_lso(distanceMatrix, population)
+    fast_swap_lso(distanceMatrix, population)
     for i in range(iters):
         it_start = time.time()
 
@@ -503,7 +503,7 @@ def k_tournament_migration(population, num_parents, fitness_values, k=5):
 
 @nb.njit()
 def fitness(individual, dmatrix):
-	n = len(dmatrix[0])
+	n = dmatrix.shape[1]
 	distance = 0
 	for i in range(0,n-1):
 		distance += dmatrix[individual[i], individual[i+1]]  
@@ -513,7 +513,13 @@ def fitness(individual, dmatrix):
 #def fitnessv2(individual, dmatrix):
 
 
-
+@nb.njit()
+def fitness2(individual, dmatrix):
+	n = individual.shape[0]
+	distance = 0
+	for i in range(0,n-1):
+		distance += dmatrix[individual[i], individual[i+1]]  
+	return distance
 
 
 
@@ -975,8 +981,8 @@ def swap_lso(dmatrix, ind):
     bestFit = fitness(curr_route, dmatrix)
     bestj = -1
     bestk = -1
-    for j in range(ind.shape[0]):
-        for k in range(j, ind.shape[0]):
+    for j in range(ind.shape[0]-1):
+        for k in range(j+1, ind.shape[0]):
             temp = curr_route[j]
             curr_route[j] = curr_route[k]
             curr_route[k] = temp
@@ -1129,19 +1135,30 @@ def fast_swap_lso(dmatrix, pop):
     n = pop.shape[1]
     for i in range(pop.shape[0]):
         curr_route = pop[i]
-        bestFit = fitness(curr_route, dmatrix)
+        f1 = fitness(curr_route, dmatrix)
+        bestDiff = 0
         bestj = -1
         bestk = -1
         iters = 5000
         for j in range(iters):
             idi = np.random.randint(n-1)
             idj = np.random.randint(idi+1, n)
+            slicei = max(0, idi-1)
+            slicej = idj-1
+            if slicej == idi:
+                slicej = idj
+            total = fitness2(curr_route[slicei:idi+2], dmatrix)
+            total += fitness2(curr_route[slicej:idj+2], dmatrix)
+            total += dmatrix[curr_route[n-1], curr_route[0]]
             temp = curr_route[idi]
             curr_route[idi] = curr_route[idj]
             curr_route[idj] = temp
-            fit = fitness(curr_route, dmatrix)
-            if fit < bestFit:
-                bestFit = fit
+            total -= fitness2(curr_route[slicei:idi+2], dmatrix)
+            total -= fitness2(curr_route[slicej:idj+2], dmatrix)
+            total -= dmatrix[curr_route[n-1], curr_route[0]]
+
+            if total > bestDiff:
+                bestDiff = total
                 bestj = idi
                 bestk = idj
             #unswap for next iteration
@@ -1150,12 +1167,60 @@ def fast_swap_lso(dmatrix, pop):
             curr_route[idj] = temp
         temp = pop[i, bestj]
         pop[i,bestj] = pop[i,bestk]
-        pop[i,bestk] = temp 
+        pop[i,bestk] = temp
+        f2 = fitness(pop[i], dmatrix)
+        if f2 > f1:
+            print("oh no!!!!!!")
+
+
+@nb.njit()
+def swap_lso_all(dmatrix, pop):
+    n = pop.shape[1]
+    for i in range(pop.shape[0]):
+        curr_route = pop[i]
+        f1 = fitness(curr_route, dmatrix)
+        bestDiff = 0
+        bestj = -1
+        bestk = -1
+        for idi in range(n-1):
+            for idj in range(idi+1, n):
+                slicei = max(0, idi-1)
+                slicej = idj-1
+                if slicej == idi:
+                    slicej = idj
+                total = fitness2(curr_route[slicei:idi+2], dmatrix)
+                total += fitness2(curr_route[slicej:idj+2], dmatrix)
+                total += dmatrix[curr_route[n-1], curr_route[0]]
+                temp = curr_route[idi]
+                curr_route[idi] = curr_route[idj]
+                curr_route[idj] = temp
+                total -= fitness2(curr_route[slicei:idi+2], dmatrix)
+                total -= fitness2(curr_route[slicej:idj+2], dmatrix)
+                total -= dmatrix[curr_route[n-1], curr_route[0]]
+
+                if total > bestDiff:
+                    bestDiff = total
+                    bestj = idi
+                    bestk = idj
+                #unswap for next iteration
+                temp = curr_route[idi]
+                curr_route[idi] = curr_route[idj]
+                curr_route[idj] = temp
+        temp = pop[i, bestj]
+        pop[i,bestj] = pop[i,bestk]
+        pop[i,bestk] = temp
+        f2 = fitness(pop[i], dmatrix)
+        if f2 > f1:
+            print("oh no!!!!!!")
+
+
 
 @nb.njit()
 def opt2_lso(dmatrix, ind):
     curr_route = ind
     bestFit = fitness(curr_route, dmatrix)
+    bestDiff = 0
+
     bestj = -1
     bestk = -1
     for j in range(ind.shape[0]):
@@ -1175,25 +1240,35 @@ def opt2_lso(dmatrix, ind):
 
 @nb.njit()
 def fast_opt2_lso(dmatrix, pop):
+    n = pop.shape[1]
     for k in range(pop.shape[0]):
         curr_route = pop[k]
-        bestFit = fitness(curr_route, dmatrix)
+        # f1 = fitness(curr_route, dmatrix)
+        bestDiff = 0
         bestj = -1
         bestk = -1
         iters = 3000
         for a in range(iters):
-            i = np.random.randint(0,len(pop[k])-1)
-            j = np.random.randint(i+1,len(pop[k]))
-            #individual.route[i:j] = individual.route[i:j][::-1]
+            i = np.random.randint(0,n)
+            j = np.random.randint(i+1,n+1)
+            slicei = max(0, i-1)
+            total = fitness2(curr_route[slicei:j+1], dmatrix)
+            total += dmatrix[curr_route[n-1], curr_route[0]]
+
             pop[k][i:j] = np.flip(pop[k][i:j])
-            fit = fitness(curr_route, dmatrix)
-            if fit < bestFit:
-                bestFit = fit
+
+            total -= fitness2(curr_route[slicei:j+1], dmatrix)
+            total -= dmatrix[curr_route[n-1], curr_route[0]]
+            if total > bestDiff:
+                bestDiff = total
                 bestj = i
                 bestk = j
             #Undo operation
             pop[k][i:j] = np.flip(pop[k][i:j])
         pop[k][bestj:bestk] = np.flip(pop[k][bestj:bestk])
+        # f2 = fitness(pop[k], dmatrix)
+        # print("f1:", f1)
+        # print("f2:", f2)
 
 @nb.njit()
 def opt3_lso(dmatrix, ind):
@@ -1474,7 +1549,7 @@ a = np.array([0,1,2,3])
 
 prog = TspProg()
 params = Parameters(lambd=900, mu=900, k=5, its=1000)
-prog.optimize("tour50.csv", params)
+prog.optimize("tour750.csv", params)
 #prog.optimize_old("tour200.csv", params)
 
 
