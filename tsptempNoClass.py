@@ -56,7 +56,9 @@ class TspProg:
         island3pop = nn_krandom_generation(distanceMatrix, island2Size)
 
 
-
+        dmatrixmod = distanceMatrix.copy()
+        np.fill_diagonal(dmatrixmod, np.inf)
+        nns = np.argmin(dmatrixmod, axis=1)
 
         meanHist = []
         minimumHist = []
@@ -69,9 +71,9 @@ class TspProg:
             bestSolution = np.array([1,2,3,4,5])
 
 
-            island1pop = island1(distanceMatrix, island1pop, islandIters, island1Size, island1mu, k, alpha, numCities)
+            island1pop = island1(distanceMatrix, island1pop, islandIters, island1Size, island1mu, k, alpha, numCities, nns)
             island2pop, island2pressure = island2(distanceMatrix, island2pop, islandIters, island2Size, island2mu, island2pressure, alpha, numCities)
-            island3pop = island3(distanceMatrix, island1pop, islandIters, island1Size, island1mu, k, alpha, numCities)
+            island3pop = island3(distanceMatrix, island3pop, islandIters, island1Size, island1mu, k, alpha, numCities)
 
             evalPop(island1pop, distanceMatrix, "Island1:")
             evalPop(island2pop, distanceMatrix, "Island2:")
@@ -320,7 +322,8 @@ def worstIndsArgs(population, distanceMatrix, n):
 #PMX
 #K-Tournament
 #fitness sharing selection
-def island1(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities):
+def island1(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities, nns):
+    alpha = 0.2
     fast_swap_lso(distanceMatrix, population)
     for i in range(iters):
         it_start = time.time()
@@ -340,11 +343,11 @@ def island1(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities):
             p2 = selected_individuals[2*j + 1]
             ##### RECOMBINATION 
             offspring[j] = pmx(p1, p2, alpha, alpha)
-
-        swapMutation(offspring, alpha)
-        swapMutation(population, alpha)
+        IRGIBNNM(offspring, alpha, nns)        
+        RGIBNNM(population, alpha, nns)
 
         fast_swap_lso(distanceMatrix, population)
+        fast_swap_lso(distanceMatrix, offspring)
 
         population = elimination(distanceMatrix, population, offspring, lambd)
 
@@ -373,8 +376,8 @@ def island2(distanceMatrix, population, iters, lambd, mu, selection_pressure, al
         num_parents = 2*mu
 
         ##### SELECTION
-        fitness_values = np.apply_along_axis(fitness, 1, population, dmatrix=distanceMatrix)
-        #fitness_values = compute_all_shared_fitnesses(population, distanceMatrix)
+        #fitness_values = np.apply_along_axis(fitness, 1, population, dmatrix=distanceMatrix)
+        fitness_values = compute_all_shared_fitnesses(population, distanceMatrix)
         selected_individuals = exp_selection(distanceMatrix, population, lambd, num_parents, fitness_values, selection_pressure) #Version WITH geometric decay
         #selected_individuals = k_tournament_selection(population, num_parents, fitness_values, 5)
         if i % 2 == 0 and a > 0.0001: #Set how aggressive the decay should be
@@ -405,10 +408,10 @@ def island2(distanceMatrix, population, iters, lambd, mu, selection_pressure, al
 #Island with:
 #Inverse Mutation
 #TPX
-#Exp_selection
+#K-tournament selection
 #fitness sharing selection
 def island3(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities):
-    alpha = 0.4
+    alpha = 0.2
     fast_swap_lso(distanceMatrix, population)
     for i in range(iters):
         it_start = time.time()
@@ -418,8 +421,8 @@ def island3(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities):
         num_parents = 2*mu
 
         ##### SELECTION
-        fitness_values = np.array([fitness(ind, distanceMatrix) for ind in population])
-        #fitness_values = compute_all_shared_fitnesses(population, distanceMatrix)
+        #fitness_values = np.array([fitness(ind, distanceMatrix) for ind in population])
+        fitness_values = compute_all_shared_fitnesses(population, distanceMatrix)
         #selected_individuals = exp_selection(distanceMatrix, population, lambd, num_parents, fitness_values, selection_pressure) #Version WITH geometric decay
         selected_individuals = k_tournament_selection(population, num_parents, fitness_values, k)
             
@@ -594,8 +597,8 @@ def shared_fitness(individual, dmatrix, edges, population=None, betaInit=0):
         return fitness(individual, dmatrix)
 
     n = individual.shape[0]
-    alpha = 1
-    sigma =  (n-1) * 0.6 #We need a distance function!
+    alpha = 0.5
+    sigma =  (n-1) * 0.2 #We need a distance function!
 
     distances = dist_to_pop(individual, population, edges)
     beta = betaInit
@@ -690,44 +693,51 @@ def swapMutation(inds, a):
         inds[k][i] = inds[k][j]
         inds[k][j] = tmp
 
-def scrambleMutation(inds, a):
-    """
-    Apply Scramble Mutation to an individual in-place.
 
-    Parameters:
-    - individual: A NumPy array representing an individual.
-
-    This function mutates the individual in-place, so it returns nothing.
-    """
+@nb.njit()
+def IRGIBNNM(inds, a, nns):
+    n = inds.shape[1]
     for k in range(inds.shape[0]):
         if np.random.uniform() < a:
-            i = np.random.randint(0, len(inds[k]))
-            j = np.random.randint(i + 1, len(inds[k]))
-            segment = inds[k][i:j]
-            np.random.shuffle(segment)
-            inds[k][i:j] = segment
+            #First perform inv mutation
+            i = np.random.randint(0,n-1)
+            j = np.random.randint(i+1,n)
+            inds[k][i:j] = np.flip(inds[k][i:j])
 
-def insertMutation(inds, a):
-    """
-    Apply Insert Mutation to an individual in-place.
+            #Insert random city (rci) close (-+5) from its nn
+            rcidx = np.random.randint(0,n)
+            rci = inds[k, rcidx]
+            nn = nns[rci]
 
-    Parameters:
-    - individual: A NumPy array representing an individual.
+            nnidx = np.where(inds[k]==nn)[0][0]
+            randOffsetIndex = (np.random.randint(-3, 4)) % (n-1)
+            swapCityIndex = (nnidx + randOffsetIndex) % (n-1)
+            swapCity = inds[k, swapCityIndex]
 
-    This function mutates the individual in-place, so it returns nothing.
-    """
+            inds[k, swapCityIndex] = rci
+            inds[k, rcidx] = swapCity
+
+
+@nb.njit()
+def RGIBNNM(inds, a, nns):
+    n = inds.shape[1]
     for k in range(inds.shape[0]):
         if np.random.uniform() < a:
-            i = np.random.randint(0, len(inds[k]))
-            j = np.random.randint(0, len(inds[k]))
-            gene = inds[k][i]
-            inds[k] = np.insert(inds[k], j, gene)
-            if j <= i:
-                i += 1
-            inds[k] = np.delete(inds[k], i)
+            #Insert random city (rci) close (-+5) from its nn
+            rcidx = np.random.randint(0,n)
+            rci = inds[k, rcidx]
+            nn = nns[rci]
 
-
-
+            nnidx = np.where(inds[k]==nn)[0][0]
+            #If random city is left of nn, get -1, otherwise +1
+            offsetSide = np.sign(rcidx - nnidx)
+            swapCityIndex = (nnidx + offsetSide) % n
+            if offsetSide > 0:
+                inds[k][nnidx+2:rcidx+1] = inds[k][nnidx+1:rcidx]
+                inds[k, swapCityIndex] = rci
+            else:
+                inds[k][rcidx:nnidx] = inds[k][rcidx+1:nnidx+1]
+                inds[k, swapCityIndex] = rci
 ######################### RECOMBINATIONS ###############################
 
 #Ordered two-point crossover for permutations
@@ -1533,11 +1543,16 @@ def plotResuts(mean, min):
 
 testArray1 = np.array([[0, 1.5, 4.8, 3.4],
                        [2.8, 0, 6.4, 8.7],
-					   [10., 5.4, 0, 9.5],
+					   [10., 5.4, 0, 1.],
                        [10., 3.8, 9.3, 0]])
     
 population = np.array([[0,1,2,3],[3,1,2,0]])
-a = np.array([0,1,2,3])
+#a = np.array([0,1,2,3])
+#dmatrixmod = testArray1.copy()
+#np.fill_diagonal(dmatrixmod, np.inf)
+#nns = np.argmin(dmatrixmod, axis=1)
+#print("nns", nns)
+#IRGIBNNM(population, 1, nns)
 #optimizeBestInd(swap3_lso, a, testArray1)
 #swap3_lso(testArray1, a)
 #opt3_lso(testArray1, a)
@@ -1549,7 +1564,7 @@ a = np.array([0,1,2,3])
 
 prog = TspProg()
 params = Parameters(lambd=900, mu=900, k=5, its=1000)
-prog.optimize("tour750.csv", params)
+prog.optimize("tour50.csv", params)
 #prog.optimize_old("tour200.csv", params)
 
 
