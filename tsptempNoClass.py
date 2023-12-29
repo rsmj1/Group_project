@@ -46,7 +46,7 @@ class TspProg:
 
         islandSize = int(lam/4)
         islandmu = int(mu/4)
-        island2pressure = 0.99
+        island2pressure = 0.5
         island4pressure = 0.99
         exchangeRate = 0.05
         print("Initializing island populations")
@@ -73,9 +73,9 @@ class TspProg:
             bestObjective = 0.0
             bestSolution = np.array([1,2,3,4,5])
 
-
-            island1pop = island1(distanceMatrix, island1pop, islandIters, islandSize, islandmu, k, alpha, numCities, nns)
-            # island2pop, island2pressure = island2(distanceMatrix, island2pop, islandIters, islandSize, islandmu, island2pressure, alpha, numCities)
+#TODO: Change island2 pop back to island2pop
+            #island1pop = island1(distanceMatrix, island1pop, islandIters, islandSize, islandmu, k, alpha, numCities, nns)
+            island1pop, island2pressure = island2(distanceMatrix, island1pop, islandIters, islandSize, islandmu, island2pressure, alpha, numCities)
             # island3pop = island3(distanceMatrix, island3pop, islandIters, islandSize, islandmu, k, alpha, numCities, nns)
             # island4pop, island4pressure = island4(distanceMatrix, island4pop, islandIters, islandSize, islandmu, island4pressure, alpha, numCities, nns)
 
@@ -194,10 +194,13 @@ def worstIndsArgs(population, distanceMatrix, n):
 
 
 #Island with:
-#Swap Mutation
-#PMX
-#K-Tournament
-#fitness sharing selection
+# alpha = 0.5
+# Initial faster_opt3_lso_exh
+# K tournament (fitness sharing)
+# PMX
+# IRGIBNMM and RGIBNMM
+# 5x fast_swap3_lso_pop on pop
+#fast_swap_lso on offspring
 def island1(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities, nns):
     alpha = 0.5
     faster_opt3_lso_exh(distanceMatrix, population)
@@ -237,14 +240,15 @@ def island1(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities, n
 
 
 #Island with:
-#Inverse Mutation
+#Initial fast_swap3_lso_pop_exh
+#Exp_selection (fitness sharing)
 #TPX
-#Exp_selection
-#fitness sharing selection
+#Inverse Mutation
+# 5x fast_opt2_lso
 def island2(distanceMatrix, population, iters, lambd, mu, selection_pressure, alpha, numCities):
     alpha = 0.2
     a = 0.99
-    fast_swap_lso(distanceMatrix, population)
+    fast_swap3_lso_pop_exh(distanceMatrix, population)
     for i in range(iters):
         it_start = time.time()
 
@@ -268,13 +272,11 @@ def island2(distanceMatrix, population, iters, lambd, mu, selection_pressure, al
             p2 = selected_individuals[2*j + 1]
             ##### RECOMBINATION 
             offspring[j] = tpx(p1, p2, alpha, alpha)
-
         invMutation(offspring, alpha)
         invMutation(population, alpha)
-
-        fast_opt2_lso(distanceMatrix, population)
+        for i in range(3):
+            fast_opt2_lso(distanceMatrix, population)
         fast_opt2_lso(distanceMatrix, offspring)
-
         population = elimination(distanceMatrix, population, offspring, lambd)
         it_end = time.time()
         print(i, "Island2 time:", it_end-it_start)
@@ -1660,7 +1662,7 @@ def fast_opt2_lso(dmatrix, pop):
         bestDiff = 0
         besti = -1
         bestj = -1
-        iters = 1000
+        iters = 500
         inv = False
         for a in range(iters):
             i = np.random.randint(0,n-1)
@@ -1682,6 +1684,7 @@ def fast_opt2_lso(dmatrix, pop):
             pop[k][0:i] = np.flip(pop[k][0:i])
             pop[k][j:n] = np.flip(pop[k][j:n])
             total -= compute_opt_inv_total(dmatrix, pop[k], i, j, n)
+
             if total > bestDiff:
                 bestDiff = total
                 besti = i
@@ -1695,6 +1698,7 @@ def fast_opt2_lso(dmatrix, pop):
             pop[k][bestj:n] = np.flip(pop[k][bestj:n])
         else:
             pop[k][besti:bestj] = np.flip(pop[k][besti:bestj])
+
 
 
 @nb.njit()
@@ -2265,7 +2269,7 @@ prog.optimize("tour1000.csv", params)
 # tour200: simple greedy heuristic 39745
 # 7.5%: 36764
 # tour500: simple greedy heuristic 157034
-# 7.5%: 145256
+# 7.5%: 145256 
 # tour750: simple greedy heuristic 197541
 # 7.5%: 182725
 # tour1000: simple greedy heuristic 195848
