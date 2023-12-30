@@ -6,8 +6,7 @@ import math
 import matplotlib.pyplot as plt
 import time
 import numba as nb
-
-
+import multiprocessing as mp
 
 #TODO: 1. Finish two islands - 2. pull out original optimize as secondary optimization function for test - 3. better LSO - 4. Fine tuning, alpha, other hyperparams - 5. Other operators? Than PMX? Than SwapMutation?
 
@@ -42,22 +41,20 @@ class TspProg:
         bestInd = np.random.permutation(numCities)
         
         ##### GENERATION
-        islandIters = 5
+        islandIters = 10
 
         islandSize = int(lam/4)
         islandmu = int(mu/4)
         island2pressure = 0.4
-        island4pressure = 0.99
         exchangeRate = 0.05
         print("Initializing island populations")
         island1pop = nn_krandom_generation(distanceMatrix, islandSize)
-        # #island1pop = random_less_inf_gen(distanceMatrix, islandSize)
-        # fast_opt2_lso_exh(distanceMatrix, island1pop)
-        # island2pop = nn_krandom_generation(distanceMatrix, 10)
-
-        # island3pop = nn_krandom_generation(distanceMatrix, islandSize)
-        # island4pop = nn_krandom_generation(distanceMatrix, islandSize)
-        # fast_swap3_lso_pop_exh(distanceMatrix, island4pop)
+        island1pop = random_less_inf_gen(distanceMatrix, islandSize)
+        fast_opt2_lso_exh(distanceMatrix, island1pop)
+        island2pop = nn_krandom_generation(distanceMatrix, islandSize)
+        island3pop = nn_krandom_generation(distanceMatrix, islandSize)
+        island4pop = random_less_inf_gen(distanceMatrix, islandSize)
+        faster_opt3_lso_exh(distanceMatrix, island4pop)
 
         dmatrixmod = distanceMatrix.copy()
         np.fill_diagonal(dmatrixmod, np.inf)
@@ -73,53 +70,48 @@ class TspProg:
             bestObjective = 0.0
             bestSolution = np.array([1,2,3,4,5])
 
-#TODO: Change island2 pop back to island2pop
-            #island1pop = island1(distanceMatrix, island1pop, islandIters, islandSize, islandmu, k, alpha, numCities, nns)
-            island1pop = island4(distanceMatrix, island1pop, islandIters, islandSize, islandmu, island2pressure, alpha, numCities, nns)
-            # island3pop = island3(distanceMatrix, island3pop, islandIters, islandSize, islandmu, k, alpha, numCities, nns)
-            # island4pop, island4pressure = island4(distanceMatrix, island4pop, islandIters, islandSize, islandmu, island4pressure, alpha, numCities, nns)
+            island1pop = island1(distanceMatrix, island1pop, islandIters, islandSize, islandmu, k, alpha, numCities, nns)
+            island2pop, island2pressure = island2(distanceMatrix, island2pop, islandIters, islandSize, islandmu, island2pressure, alpha, numCities, nns)
+            island3pop = island3(distanceMatrix, island3pop, islandIters, islandSize, islandmu, k, alpha, numCities, nns)
+            island4pop = island4(distanceMatrix, island4pop, islandIters, islandSize, islandmu, k, alpha, numCities, nns)
 
             evalPop(island1pop, distanceMatrix, "Island1:")
-            # evalPop(island2pop, distanceMatrix, "Island2:")
-            # evalPop(island3pop, distanceMatrix, "Island3:")
-            # evalPop(island4pop, distanceMatrix, "Island4:")
-
+            evalPop(island2pop, distanceMatrix, "Island2:")
+            evalPop(island3pop, distanceMatrix, "Island3:")
+            evalPop(island4pop, distanceMatrix, "Island4:")
 
             #Ring topology
-            # island1candidateVals = compute_all_shared_fitnesses_island(island1pop, island2pop, distanceMatrix)
-            # island2candidateVals = compute_all_shared_fitnesses_island(island2pop, island3pop, distanceMatrix)
-            # island3candidateVals = compute_all_shared_fitnesses_island(island3pop, island4pop, distanceMatrix)
-            # island4candidateVals = compute_all_shared_fitnesses_island(island4pop, island1pop, distanceMatrix)
+            island1candidateVals = compute_all_shared_fitnesses_island(island1pop, island2pop, distanceMatrix)
+            island2candidateVals = compute_all_shared_fitnesses_island(island2pop, island3pop, distanceMatrix)
+            island3candidateVals = compute_all_shared_fitnesses_island(island3pop, island4pop, distanceMatrix)
+            island4candidateVals = compute_all_shared_fitnesses_island(island4pop, island1pop, distanceMatrix)
 
-            # kmig = 5
-            # i1migrators, i1indices = k_tournament_migration(island1pop, int(islandSize*exchangeRate), island1candidateVals, kmig)
-            # i2migrators, i2indices = k_tournament_migration(island2pop, int(islandSize*exchangeRate), island2candidateVals, kmig)
-            # i3migrators, i3indices = k_tournament_migration(island3pop, int(islandSize*exchangeRate), island3candidateVals, kmig)
-            # i4migrators, i4indices = k_tournament_migration(island4pop, int(islandSize*exchangeRate), island4candidateVals, kmig)
+            kmig = 5
+            i1migrators, i1indices = k_tournament_migration(island1pop, int(islandSize*exchangeRate), island1candidateVals, kmig)
+            i2migrators, i2indices = k_tournament_migration(island2pop, int(islandSize*exchangeRate), island2candidateVals, kmig)
+            i3migrators, i3indices = k_tournament_migration(island3pop, int(islandSize*exchangeRate), island3candidateVals, kmig)
+            i4migrators, i4indices = k_tournament_migration(island4pop, int(islandSize*exchangeRate), island4candidateVals, kmig)
 
-            # island1pop[i1indices, :] = i4migrators
-            # island2pop[i2indices, :] = i1migrators
-            # island3pop[i3indices, :] = i2migrators
-            # island4pop[i4indices, :] = i3migrators
-            t1 = time.time()
-            #bestInd1 = optimizeBestInd(fast_opt3_lso_ind_exh, island1pop, distanceMatrix)
+            island1pop[i1indices, :] = i4migrators
+            island2pop[i2indices, :] = i1migrators
+            island3pop[i3indices, :] = i2migrators
+            island4pop[i4indices, :] = i3migrators
+
             bestInd1 = optimizeBestInd(fast_opt3_lso_ind_exh, island1pop, distanceMatrix)
-            t2 = time.time()
-            print("individual time", t2-t1)
-            # bestInd2 = optimizeBestInd(swap_lso, island2pop, distanceMatrix)
-            # bestInd3 = optimizeBestInd(fast_swap3_ind_exh, island3pop, distanceMatrix)
-            # bestInd4 = optimizeBestInd(opt2_lso_ind_exh, island3pop, distanceMatrix)
+            bestInd2 = optimizeBestInd(fast_swap3_ind_exh, island2pop, distanceMatrix)
+            bestInd3 = optimizeBestInd(fast_opt3_lso_ind_exh, island3pop, distanceMatrix)
+            bestInd4 = optimizeBestInd(fast_swap3_ind_exh, island3pop, distanceMatrix)
 
 
             i1s = worstIndsArgs(island1pop, distanceMatrix, 1)
-            # i2s = worstIndsArgs(island2pop, distanceMatrix, 1)
-            # i3s = worstIndsArgs(island3pop, distanceMatrix, 1)
-            # i4s = worstIndsArgs(island4pop, distanceMatrix, 1)
+            i2s = worstIndsArgs(island2pop, distanceMatrix, 1)
+            i3s = worstIndsArgs(island3pop, distanceMatrix, 1)
+            i4s = worstIndsArgs(island4pop, distanceMatrix, 1)
 
-            island1pop[i1s,:] = bestInd1
-            # island2pop[i2s,:] = bestInd1
-            # island3pop[i3s,:] = bestInd2
-            # island4pop[i4s,:] = bestInd3
+            island1pop[i1s,:] = bestInd4
+            island2pop[i2s,:] = bestInd1
+            island3pop[i3s,:] = bestInd2
+            island4pop[i4s,:] = bestInd3
 
 
             population = np.vstack((island1pop))
@@ -229,6 +221,7 @@ def island1(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities, n
         fast_swap_lso(distanceMatrix, offspring)
 
         population = elimination(distanceMatrix, population, offspring, lambd)
+        #shared_fitness_elimination(dmatrix, population, offspring, lambd, sigmaMult = 0.3, alpha=0.5)
 
         it_end = time.time()
         print(i, "Island1 time:", it_end-it_start)
@@ -274,12 +267,12 @@ def island2(distanceMatrix, population, iters, lambd, mu, selection_pressure, al
         invMutation(population, alpha)
 
         for i in range(3):
-            fast_opt2_lso(distanceMatrix, population)
+            fast_swap3_lso_pop(distanceMatrix, offspring)
         faster_opt3_lso(distanceMatrix, population)
-        fast_swap3_lso_pop_exh(distanceMatrix, offspring)
+        fast_opt2_lso(distanceMatrix, population)
 
         population = elimination(distanceMatrix, population, offspring, lambd)
-        #shared_fitness_elimination(dmatrix, population, offspring, lambd, sigmaMult = 0.1, alpha=0.5)
+        #shared_fitness_elimination(dmatrix, population, offspring, lambd, sigmaMult = 0.3, alpha=0.5)
 
         it_end = time.time()
         print(i, "Island2 time:", it_end-it_start)
@@ -322,6 +315,8 @@ def island3(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities, n
         fast_swap_lso(distanceMatrix, offspring)
 
         population = elimination(distanceMatrix, population, offspring, lambd)
+        #shared_fitness_elimination(dmatrix, population, offspring, lambd, sigmaMult = 0.3, alpha=0.5)
+
         it_end = time.time()
         print(i, "Island3 time:", it_end-it_start)
 
@@ -1261,7 +1256,7 @@ def fast_swap3_ind_exh(dmatrix, ind):
         bestInd = ind.copy()
         ind = ind.copy()
         bestDiff = 0
-        iters = 1000
+        iters = 3000
         change = False
         for iter in range(iters):
             i = np.random.randint(n-2)
@@ -2065,7 +2060,7 @@ def fast_opt3_lso_ind_exh(dmatrix, ind):
         #i = 0, j = 1, k = 2
         bestFit = fitness(ind, dmatrix)
         #Maintain a gap of 2 between indices, as flip does not do anything otherwise
-        iters = 2000
+        iters = 4000
         for iter in range(iters):
             i = np.random.randint(n-3)
             j = np.random.randint(i+2, n-1)
@@ -2387,7 +2382,7 @@ population = np.array([[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],[16,15,14,13,1
 
 prog = TspProg()
 params = Parameters(lambd=120, mu=120, k=5, its=1000)
-prog.optimize("tour1000.csv", params)
+prog.optimize("tour750.csv", params)
 #prog.optimize_old("tour200.csv", params)
 
 
