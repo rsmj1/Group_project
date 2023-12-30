@@ -46,7 +46,7 @@ class TspProg:
 
         islandSize = int(lam/4)
         islandmu = int(mu/4)
-        island2pressure = 0.5
+        island2pressure = 0.4
         island4pressure = 0.99
         exchangeRate = 0.05
         print("Initializing island populations")
@@ -75,7 +75,7 @@ class TspProg:
 
 #TODO: Change island2 pop back to island2pop
             #island1pop = island1(distanceMatrix, island1pop, islandIters, islandSize, islandmu, k, alpha, numCities, nns)
-            island1pop, island2pressure = island2(distanceMatrix, island1pop, islandIters, islandSize, islandmu, island2pressure, alpha, numCities)
+            island1pop = island4(distanceMatrix, island1pop, islandIters, islandSize, islandmu, island2pressure, alpha, numCities, nns)
             # island3pop = island3(distanceMatrix, island3pop, islandIters, islandSize, islandmu, k, alpha, numCities, nns)
             # island4pop, island4pressure = island4(distanceMatrix, island4pop, islandIters, islandSize, islandmu, island4pressure, alpha, numCities, nns)
 
@@ -245,7 +245,7 @@ def island1(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities, n
 #TPX
 #Inverse Mutation
 # 5x fast_opt2_lso
-def island2(distanceMatrix, population, iters, lambd, mu, selection_pressure, alpha, numCities):
+def island2(distanceMatrix, population, iters, lambd, mu, selection_pressure, alpha, numCities, nns):
     alpha = 0.2
     a = 0.99
     fast_swap3_lso_pop_exh(distanceMatrix, population)
@@ -257,15 +257,13 @@ def island2(distanceMatrix, population, iters, lambd, mu, selection_pressure, al
         num_parents = 2*mu
 
         ##### SELECTION
-        #fitness_values = np.apply_along_axis(fitness, 1, population, dmatrix=distanceMatrix)
-        fitness_values = compute_all_shared_fitnesses(population, distanceMatrix)
+        #fitness_vals_for_use = np.apply_along_axis(fitness, 1, population, dmatrix=distanceMatrix)
+        fitness_values = compute_all_shared_fitnesses(population, distanceMatrix, 0.4, 1)
         selected_individuals = exp_selection(distanceMatrix, population, lambd, num_parents, fitness_values, selection_pressure) #Version WITH geometric decay
         #selected_individuals = k_tournament_selection(population, num_parents, fitness_values, 5)
-        if i % 2 == 0 and a > 0.0001: #Set how aggressive the decay should be
+        if i % 2 == 0 and selection_pressure > 0.01: #Set how aggressive the decay should be
             selection_pressure *= a
-        else:
-            selection_pressure  = 0.2
-            
+
         # Select from the population:
         for j in range(mu):
             p1 = selected_individuals[2*j]
@@ -274,10 +272,15 @@ def island2(distanceMatrix, population, iters, lambd, mu, selection_pressure, al
             offspring[j] = tpx(p1, p2, alpha, alpha)
         invMutation(offspring, alpha)
         invMutation(population, alpha)
+
         for i in range(3):
             fast_opt2_lso(distanceMatrix, population)
-        fast_opt2_lso(distanceMatrix, offspring)
+        faster_opt3_lso(distanceMatrix, population)
+        fast_swap3_lso_pop_exh(distanceMatrix, offspring)
+
         population = elimination(distanceMatrix, population, offspring, lambd)
+        #shared_fitness_elimination(dmatrix, population, offspring, lambd, sigmaMult = 0.1, alpha=0.5)
+
         it_end = time.time()
         print(i, "Island2 time:", it_end-it_start)
 
@@ -291,8 +294,8 @@ def island2(distanceMatrix, population, iters, lambd, mu, selection_pressure, al
 #K-tournament selection
 #fitness sharing selection
 def island3(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities, nns):
-    alpha = 0.4
-    fast_swap_lso(distanceMatrix, population)
+    alpha = 0.3
+    faster_opt3_lso_exh(distanceMatrix, population)
     for i in range(iters):
         it_start = time.time()
 
@@ -304,17 +307,18 @@ def island3(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities, n
         #fitness_values = np.array([fitness(ind, distanceMatrix) for ind in population])
         fitness_values = compute_all_shared_fitnesses(population, distanceMatrix)
         #selected_individuals = exp_selection(distanceMatrix, population, lambd, num_parents, fitness_values, selection_pressure) #Version WITH geometric decay
-        selected_individuals = k_tournament_selection(population, num_parents, fitness_values, k)
-            
+        selected_individuals = k_tournament_selection(population, num_parents, fitness_values, 3)
+
         # Select from the population:
         for j in range(mu):
             p1 = selected_individuals[2*j]
             p2 = selected_individuals[2*j + 1]
             ##### RECOMBINATION 
-            offspring[j] = tpx(p1, p2, alpha, alpha)
-        invMutation(offspring, alpha)
-        SAM(population, alpha, nns)
-        fast_swap_lso(distanceMatrix, population)
+            offspring[j] = ox(p1, p2, alpha, alpha)
+        IRGIBNNM(offspring, alpha, nns)        
+        RGIBNNM(population, alpha, nns)
+        for i in range(5):
+            fast_swap3_lso_pop(distanceMatrix, population)
         fast_swap_lso(distanceMatrix, offspring)
 
         population = elimination(distanceMatrix, population, offspring, lambd)
@@ -327,42 +331,47 @@ def island3(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities, n
 
 
 def island4(distanceMatrix, population, iters, lambd, mu, selection_pressure, alpha, numCities, nns):
-    alpha = 0.4
+    alpha = 0.2
     a = 0.99
-    mu = 10
-    fast_swap_lso(distanceMatrix, population)
+    fast_swap3_lso_pop_exh(distanceMatrix, population)
     for i in range(iters):
         it_start = time.time()
 
         #Create offspring
-        offspring = np.empty((mu, numCities), dtype = int)
+        offspring = np.empty((mu*2, numCities), dtype = int)
         num_parents = 2*mu
 
         ##### SELECTION
-        #fitness_values = np.array([fitness(ind, distanceMatrix) for ind in population])
+        #fitness_vals_for_use = np.apply_along_axis(fitness, 1, population, dmatrix=distanceMatrix)
         fitness_values = compute_all_shared_fitnesses(population, distanceMatrix)
-        selected_individuals = exp_selection(distanceMatrix, population, lambd, num_parents, fitness_values, selection_pressure) #Version WITH geometric decay
-        #selected_individuals = k_tournament_selection(population, num_parents, fitness_values, 5)
-        if i % 2 == 0 and a > 0.0001: #Set how aggressive the decay should be
+        #selected_individuals = k_tournament_selection(distanceMatrix, population, lambd, num_parents, fitness_values, 5) #Version WITH geometric decay
+        selected_individuals = k_tournament_selection(population, num_parents, fitness_values, 5)
+        if i % 2 == 0 and selection_pressure > 0.01: #Set how aggressive the decay should be
             selection_pressure *= a
-        else:
-            selection_pressure  = 0.2
+
         # Select from the population:
         for j in range(mu):
             p1 = selected_individuals[2*j]
             p2 = selected_individuals[2*j + 1]
             ##### RECOMBINATION 
-            offspring[j] = pmx(p1, p2, alpha, alpha)
+            offspring[2*j] = pmx(p1, p2, alpha, alpha)
+            offspring[2*j+1] = pmx(p2, p1, alpha, alpha)
+
         invMutation(offspring, alpha)
         invMutation(population, alpha)
-        fast_opt2_lso(distanceMatrix, population)
-        fast_opt2_lso_exh(distanceMatrix, offspring)
+
+        for i in range(3):
+            fast_swap3_lso_pop(distanceMatrix, population)
+        faster_opt3_lso(distanceMatrix, population)
+        fast_swap3_lso_pop_exh(distanceMatrix, offspring)
 
         population = elimination(distanceMatrix, population, offspring, lambd)
+        #shared_fitness_elimination(dmatrix, population, offspring, lambd, sigmaMult = 0.1, alpha=0.5)
+
         it_end = time.time()
         print(i, "Island4 time:", it_end-it_start)
 
-    return population, selection_pressure
+    return population
 
 
 
@@ -452,31 +461,31 @@ for TSP, it can be difficult to get an actual distance that satisfies triangle i
 
 
 @nb.njit()
-def shared_fitness_elimination(dmatrix, population, offspring, num_survivors):
+def shared_fitness_elimination(dmatrix, population, offspring, num_survivors, sigmaMult=0.2,alpha=0.8):
     individuals = np.vstack((population, offspring))
     n = population.shape[1]
     survivors = np.empty((num_survivors, n), dtype=np.int64)
     num_survivors = survivors.shape[0]
 
     edges = np.zeros(1000000, dtype=np.int64)
-    idx = compute_fitness_vals_best_id(individuals, None, dmatrix, edges)
+    idx = compute_fitness_vals_best_id(individuals, None, dmatrix, edges, sigmaMult, alpha)
     survivors[0] = individuals[idx,:]
 
     for i in range(1, num_survivors):
         edges[:] = 0
-        idx = compute_fitness_vals_best_id(individuals, survivors[0:i,:], dmatrix, edges)
+        idx = compute_fitness_vals_best_id(individuals, survivors[0:i,:], dmatrix, edges, sigmaMult, alpha)
         survivors[i] = individuals[idx,:]
     return survivors
 
 
 
 @nb.njit()
-def compute_fitness_vals_best_id(individuals, survivors, dmatrix, edges):
+def compute_fitness_vals_best_id(individuals, survivors, dmatrix, edges, sigmaMult=0.2, alpha=0.8):
     num_individuals = individuals.shape[0]
     best_val = np.inf
     best_index = 0
     for j in range(num_individuals):
-        fitness_val = shared_fitness(individuals[j], dmatrix, edges, survivors, 1)
+        fitness_val = shared_fitness(individuals[j], dmatrix, edges, survivors, 1, sigmaMult, alpha)
         if fitness_val < best_val:
             best_val = fitness_val
             best_index = j
@@ -495,26 +504,26 @@ def compute_all_shared_fitnesses_island(population1, population2, dmatrix):
     return fitnesses
 
 @nb.njit()
-def compute_all_shared_fitnesses(population, dmatrix):
+def compute_all_shared_fitnesses(population, dmatrix, sigmaMult=0.2, alpha=0.8):
     n = population.shape[0]
     edges = np.zeros(1000000, dtype=np.int64)
     fitnesses = np.empty(n)
     for i in range(n):
         route = population[i]
-        fitnesses[i] = shared_fitness(route, dmatrix, edges, population)
+        fitnesses[i] = shared_fitness(route, dmatrix, edges, population, sigmaMult, alpha)
         edges[:] = 0
     return fitnesses
 
 
 
 @nb.njit()
-def shared_fitness(individual, dmatrix, edges, population=None, betaInit=0):
+def shared_fitness(individual, dmatrix, edges, population=None, betaInit=0, sigmaMult=0.2, alpha=0.8):
     if population is None:
         return fitness(individual, dmatrix)
 
     n = individual.shape[0]
-    alpha = 0.8
-    sigma =  (n-1) * 0.2 #We need a distance function!
+    alpha = alpha
+    sigma =  (n-1) * sigmaMult #We need a distance function!
 
     distances = dist_to_pop(individual, population, edges)
     beta = betaInit
@@ -672,6 +681,7 @@ def SAM(inds, a, nns):
         IRGIBNNM(inds, a, nns)
 
 
+
 ######################### RECOMBINATIONS ###############################
 
 #Ordered two-point crossover for permutations
@@ -725,6 +735,100 @@ def pmxloop(index_map, candidate2, offspring, loop_indexes, interval):
             new_index = index_map[curr_city]
             curr_city = candidate2[new_index]
         offspring[i] = curr_city
+    return offspring
+
+
+@nb.njit()
+def ox_v2(candidate1, candidate2, alpha1, alpha2):
+    length = candidate1.size
+    # Choose our crossover points:
+    a = np.random.randint(length-1)
+    b = np.random.randint(a+1, length)
+    print("a,b", a,b,)
+    offspring = np.zeros(length, dtype=np.int64) - 1
+    offspring[a:b] = candidate1[a:b]
+    toAvoid = set(candidate1[a:b])
+
+    insertionPoint = 0
+    for i in range(length):
+        while offspring[insertionPoint] != -1:
+            insertionPoint += 1
+        curr_city = candidate2[i]
+        if curr_city not in toAvoid:
+            offspring[insertionPoint] = curr_city
+            insertionPoint += 1
+    return offspring
+
+@nb.njit()
+def ox(candidate1, candidate2, alpha1, alpha2):
+    length = candidate1.size
+    # Choose our segment to add:
+    a = np.random.randint(length-1)
+    b = np.random.randint(a+1, length)
+    offspring = np.zeros(length, dtype=np.int64) - 1
+    offspring[a:b] = candidate1[a:b]
+    toAvoid = set(candidate1[a:b])
+    #Start insertion from end of newly inserted segment and wrap around
+    insertionPoint = b
+    for i in range(b, length):
+        while offspring[insertionPoint] != -1 and insertionPoint < length:
+            insertionPoint += 1
+        curr_city = candidate2[i]
+        if curr_city not in toAvoid:
+            if insertionPoint == length:
+                insertionPoint = 0
+            offspring[insertionPoint] = curr_city
+            insertionPoint += 1
+    for i in range(b):
+        while offspring[insertionPoint] != -1 and insertionPoint < length:
+            insertionPoint += 1
+        curr_city = candidate2[i]
+        if curr_city not in toAvoid:
+            if insertionPoint == length:
+                insertionPoint = 0
+            offspring[insertionPoint] = curr_city
+            insertionPoint += 1
+    return offspring
+
+
+@nb.njit()
+def ox_opt(candidate1, candidate2, alpha1, alpha2):
+    length = candidate1.size
+    # Choose our segment to add:
+    seglength = np.random.randint(length-1)
+    bestSeg = np.inf
+    a = -1
+    b = -1
+    for i in range(0, length-seglength+1):
+        segVal = fitness2(candidate1[i:seglength])
+        if segVal <= bestSeg:
+            bestSeg = segVal
+            a = i
+            b = i+seglength
+
+    offspring = np.zeros(length, dtype=np.int64) - 1
+    offspring[a:b] = candidate1[a:b]
+    toAvoid = set(candidate1[a:b])
+    #Start insertion from end of newly inserted segment and wrap around
+    insertionPoint = b
+    for i in range(b, length):
+        while offspring[insertionPoint] != -1 and insertionPoint < length:
+            insertionPoint += 1
+        curr_city = candidate2[i]
+        if curr_city not in toAvoid:
+            if insertionPoint == length:
+                insertionPoint = 0
+            offspring[insertionPoint] = curr_city
+            insertionPoint += 1
+    for i in range(b):
+        while offspring[insertionPoint] != -1 and insertionPoint < length:
+            insertionPoint += 1
+        curr_city = candidate2[i]
+        if curr_city not in toAvoid:
+            if insertionPoint == length:
+                insertionPoint = 0
+            offspring[insertionPoint] = curr_city
+            insertionPoint += 1
     return offspring
 
 
@@ -1479,6 +1583,7 @@ def fast_swap3_lso_pop(dmatrix, pop):
 def fast_swap3_lso_pop_exh(dmatrix, pop):
     n = pop.shape[1]
     for id in range(pop.shape[0]):
+        #print(id, "pop[k]b", fitness(pop[id], dmatrix))
         change = True
         while change:
             bestInd = pop[id].copy()
@@ -1556,6 +1661,10 @@ def fast_swap3_lso_pop_exh(dmatrix, pop):
                 if bestDiff > 0:
                     break
             pop[id] = bestInd
+            #print(id, "pop[k]a", fitness(pop[id], dmatrix))
+        #print(id, "pop[k]final", fitness(pop[id], dmatrix))
+       
+
 
 
 @nb.njit
@@ -1658,46 +1767,60 @@ def opt2_lso_ind_exh(dmatrix, ind):
 @nb.njit()
 def fast_opt2_lso(dmatrix, pop):
     n = pop.shape[1]
+    intervalSize = 50
     for k in range(pop.shape[0]):
+        fitb = fitness(pop[k], dmatrix)
         bestDiff = 0
         besti = -1
         bestj = -1
-        iters = 500
+        #iters = 500
         inv = False
-        for a in range(iters):
-            i = np.random.randint(0,n-1)
-            j = np.random.randint(i+2,n+1)
-            total = compute_opt_total(dmatrix, pop[k], i, j, n)
-            pop[k][i:j] = np.flip(pop[k][i:j])
-            total -= compute_opt_total(dmatrix, pop[k], i, j, n)
+        intervalStart = np.random.randint(0,n-(intervalSize-1))
 
-            if total > bestDiff:
-                bestDiff = total
-                besti = i
-                bestj = j
-                inv = False
-            #Undo operation
-            pop[k][i:j] = np.flip(pop[k][i:j])
-
-            #check inverse flip
-            total = compute_opt_inv_total(dmatrix, pop[k], i, j, n)
-            pop[k][0:i] = np.flip(pop[k][0:i])
-            pop[k][j:n] = np.flip(pop[k][j:n])
-            total -= compute_opt_inv_total(dmatrix, pop[k], i, j, n)
-
-            if total > bestDiff:
-                bestDiff = total
-                besti = i
-                bestj = j
-                inv = True
-            #Undo inverse
-            pop[k][j:n] = np.flip(pop[k][j:n])
-            pop[k][0:i] = np.flip(pop[k][0:i])
+        for i in range(intervalStart, intervalStart+intervalSize-1):
+            for j in range(i+2, intervalStart+intervalSize):
+                total = compute_opt_total(dmatrix, pop[k], i, j, n)
+                pop[k][i:j] = np.flip(pop[k][i:j])
+                total -= compute_opt_total(dmatrix, pop[k], i, j, n)
+                if total > bestDiff:
+                    bestDiff = total
+                    besti = i
+                    bestj = j
+                    inv = False
+                #Undo operation
+                pop[k][i:j] = np.flip(pop[k][i:j])
+                checki = max(0, intervalStart-1)
+                #check inverse flip
+                total = fitness2(pop[k, checki:intervalStart+intervalSize+2], dmatrix)
+                total += dmatrix[pop[k, n-1], pop[k,0]]
+                pop[k][intervalStart:i] = np.flip(pop[k][intervalStart:i])
+                pop[k][j:intervalStart+intervalSize] = np.flip(pop[k][j:intervalStart+intervalSize])
+                total -= fitness2(pop[k, checki:intervalStart+intervalSize+2], dmatrix)
+                total -= dmatrix[pop[k,n-1], pop[k,0]]
+                if total > bestDiff:
+                    bestDiff = total
+                    besti = i
+                    bestj = j
+                    inv = True
+                #Undo inverse
+                pop[k][j:intervalStart+intervalSize] = np.flip(pop[k][j:intervalStart+intervalSize])
+                pop[k][intervalStart:i] = np.flip(pop[k][intervalStart:i])
         if inv:
-            pop[k][0:besti] = np.flip(pop[k][0:besti])
-            pop[k][bestj:n] = np.flip(pop[k][bestj:n])
+            pop[k][intervalStart:besti] = np.flip(pop[k][intervalStart:besti])
+            pop[k][bestj:intervalStart+intervalSize] = np.flip(pop[k][bestj:intervalStart+intervalSize])
         else:
             pop[k][besti:bestj] = np.flip(pop[k][besti:bestj])
+        fita = fitness(pop[k], dmatrix)
+        if fita > fitb:
+            print("NOOOOO")
+            print("inv:", inv)
+            print("fitb", fitb)
+            print("fita", fita)
+            print("besti, bestj", i, j)
+            print("bestDiff:", bestDiff)
+            print("invertvalsize", intervalSize)
+            print("intervalstart", intervalStart)
+
 
 
 
@@ -2020,7 +2143,6 @@ def fast_opt3_lso_ind_exh(dmatrix, ind):
             ind[i:j] = np.flip(ind[i:j])
             ind[i:k] = np.flip(ind[i:k])
         ind = bestInd
-    print("len set of ind", len(set(bestInd)))
     return bestInd
 
 
@@ -2034,7 +2156,7 @@ def faster_opt3_lso(dmatrix, pop):
         bestFit = fitness(ind, dmatrix)
         origFit = bestFit
         #Maintain a gap of 2 between indices, as flip does not do anything otherwise
-        iters = 500
+        iters = 300
         for iter in range(iters):
             i = np.random.randint(n-3)
             j = np.random.randint(i+2, n-1)
@@ -2248,8 +2370,16 @@ testArray2 = np.array([[0, np.inf, 4.8, 3.4],
                        [10., 3.8, np.inf, 0]])
 #population = random_less_inf_gen(testArray2, 10)
 #print("population:", population)
-population = np.array([[0,1,2,3,4,5,6],[3,1,4,0,2,6,5], [4,3,0,6,1,5,2]])
+population = np.array([[0,1,2,3,4,5,6],[6,5,4,3,2,1,0], [4,3,0,6,1,5,2]])
+dmatrixmod = dmatrix.copy()
+np.fill_diagonal(dmatrixmod, np.inf)
+nns = np.argmin(dmatrixmod, axis=1)
 
+#print("population:", population)
+
+population = np.array([[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],[16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0]])
+#print("offspring", pmx(population[0], population[0], 0,0))
+#print("offspring:", ox(population[0], population[1], 0,0))
 #print("fitness before:", fitness(population[0], dmatrix))
 #swap_lso(dmatrix, population[0])
 #print("fitness after:", fitness(population[0], dmatrix))
