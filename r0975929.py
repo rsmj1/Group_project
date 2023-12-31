@@ -10,13 +10,13 @@ import multiprocessing as mp
 
 
 # Modify the class name to match your student number.
-class TspProg:
+class R0975929:
 
     def __init__(self):
         self.reporter = Reporter.Reporter(self.__class__.__name__)
 
 	# The evolutionary algorithm's main loop
-    def optimize(self, filename, params, testFile = None):
+    def optimize(self, filename, testFile = None):
 		# Read distance matrix from file.		
         file = open(filename)
         distanceMatrix = np.loadtxt(file, delimiter=",")
@@ -31,15 +31,38 @@ class TspProg:
         #print("Distance Matrix: \n", distanceMatrix)
 		#Parameters
         numCities = len(distanceMatrix[0])
+        params = Parameters(lambd=600, mu=600, k=5, its=1000)
+        kmig = 5
+        exchangeRate = 3
 
-
+        if numCities == 50:
+            print("50 Cities")
+            params = Parameters(lambd=800, mu=800, k=5, its=1000)
+            exchangeRate = 10
+        if numCities == 100:
+            print("100 Cities")
+            params = Parameters(lambd=440, mu=440, k=5, its=1000)
+            exchangeRate = 5
+        if numCities == 200:
+            print("200 Cities")
+            params = Parameters(lambd=360, mu=360, k=5, its=1000)
+            exchangeRate = 5
+        if numCities == 500:
+            print("500 Cities")
+            params = Parameters(lambd=180, mu=180, k=5, its=1000)
+        if numCities == 750:
+            print("750 Cities")
+            params = Parameters(lambd=160, mu=160, k=5, its=1000)
+        if numCities == 1000:
+            print("1000 Cities")
+            params = Parameters(lambd=120, mu=120, k=5, its=1000)
 
         lam = params.la #Population size
         mu = params.mu  #Offspring size  
         k = params.k    #K-tournament selection param  
         iterations = params.iterations
         alpha = 0.2
-
+        print("Lambda:", lam, "Mu:", mu)
         bestInd = np.random.permutation(numCities)
         bestIndFit = np.inf
         ##### GENERATION
@@ -51,7 +74,6 @@ class TspProg:
         island1Size = int(lam/8)
         island1mu = int(lam/8)
         island2pressure = 0.4
-        exchangeRate = 3
 
 
 
@@ -62,26 +84,25 @@ class TspProg:
 
 
         print("Initializing island populations")
-        #island1pop = nn_krandom_generation(distanceMatrix, islandSize)
         island1pop = nn_krandom_generation(distanceMatrix, island1Size)
-        #island1pop = random_less_inf_gen(distanceMatrix, islandSize)
+        #island1pop = random_less_inf_gen(distanceMatrix, island1Size)
         #fast_opt2_lso_exh(distanceMatrix, island1pop)
         fast_swap3_lso_pop_exh(distanceMatrix, island1pop)
 
         island2pop = nn_krandom_generation(distanceMatrix, islandSize)
+        # island2pop = random_less_inf_gen(distanceMatrix, islandSize)
         RGIBNNM(island2pop, 0.5, nns)
         invMutation(island2pop, 0.5)
         # island2pop = random_generation(distanceMatrix, islandSize)
 
         # faster_opt3_lso_exh(distanceMatrix, island2pop)
         island3pop = nkn_krandom_generation(distanceMatrix, islandSize, 2)
+        #island3pop = random_less_inf_gen(distanceMatrix, islandSize)
+
         faster_opt3_lso_exh(distanceMatrix, island3pop)
         island4pop = nn_krandom_generation(distanceMatrix, islandSize)
-        # fast_opt2_lso_exh(distanceMatrix, island4pop)
-        # fast_swap3_lso_pop_exh(distanceMatrix, island4pop)
 
-        
-
+    
         meanHist = []
         minimumHist = []
         i = 0
@@ -110,7 +131,6 @@ class TspProg:
             island3candidateVals = compute_all_shared_fitnesses_island(island3pop, island4pop, distanceMatrix)
             island4candidateVals = compute_all_shared_fitnesses_island(island4pop, island1pop, distanceMatrix)
 
-            kmig = 5
             i1migrators, i1indices = k_tournament_migration(island1pop, exchangeRate, island1candidateVals, kmig)
             i2migrators, i2indices = k_tournament_migration(island2pop, exchangeRate, island2candidateVals, kmig)
             i3migrators, i3indices = k_tournament_migration(island3pop, exchangeRate, island3candidateVals, kmig)
@@ -170,7 +190,7 @@ class TspProg:
                 print("No time left, stopping!")
                 break
             
-        printIndividual(bestInd, distanceMatrix)
+        #printIndividual(bestInd, distanceMatrix)
         print("Final mean:", meanHist[len(meanHist)-1], ", Final best:", minimumHist[len(minimumHist)-1])
         plotResuts(meanHist, minimumHist)
 		# Your code here.
@@ -248,7 +268,7 @@ def island1(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities, n
         ##### SELECTION
         #fitness_values = np.array([fitness(ind, distanceMatrix) for ind in population])
         fitness_values = compute_all_shared_fitnesses(population, distanceMatrix)
-        k = 1
+        k = 3
         selected_individuals = k_tournament_selection(population, num_parents, fitness_values, k)
         # Select from the population:
         for j in range(mu):
@@ -2080,18 +2100,12 @@ def plotResuts(mean, min):
 
 
 ############################## RUN SETUP ################################
-#360 for 50, 100, 200
-#180 for 500
-#160 for 750
-#120 for 1000
-
-prog = TspProg()
-params = Parameters(lambd=360, mu=360, k=5, its=1000)
-prog.optimize("tour200.csv", params)
+prog = R0975929()
+prog.optimize("tour1000.csv")
 
 # tour50: simple greedy heuristic 27723
 # 7.5%: 25643
-# tour100: simple greedy heuristic 90851
+# tour100: simple greedy heuristic 90851 
 # 7.5%: 84037
 # tour200: simple greedy heuristic 39745
 # 7.5%: 36764
