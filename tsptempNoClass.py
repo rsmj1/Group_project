@@ -138,7 +138,6 @@ class TspProg:
             island3pop[i3s,:] = bestInd2
             island4pop[i4s,:] = bestInd3
 
-
             population = np.vstack((island1pop, island2pop, island3pop, island4pop))
 
 			##### EVALUATION
@@ -165,8 +164,7 @@ class TspProg:
             print("Iteration time:", it_end-it_start)
             if objectiveValues[bestIndIdx] < bestIndFit:
                 bestInd = population[bestIndIdx]
-                bestIndFit = objectiveValues[bestIndIdx]
-                
+                bestIndFit = objectiveValues[bestIndIdx]   
 
             if timeLeft < 0 or i >= iterations:
                 print("No time left, stopping!")
@@ -229,7 +227,6 @@ def worstIndsArgs(population, distanceMatrix, n):
 
 
 
-
 #Island with:
 # alpha = 0.5
 # Initial faster_opt3_lso_exh
@@ -271,15 +268,13 @@ def island1(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities, n
             fast_swap3_lso_pop(distanceMatrix, offspring)
 
         #population = elimination(distanceMatrix, population, offspring, lambd)
-        shared_fitness_elimination(dmatrix, population, offspring, lambd, sigmaMult = 0.1, alpha=0.5)
+        shared_fitness_elimination(distanceMatrix, population, offspring, lambd, sigmaMult = 0.1, alpha=0.5)
 
         it_end = time.time()
         print(i, "Island1 time:", it_end-it_start)
 
 
     return population
-
-
 
 
 #Island with:
@@ -345,9 +340,7 @@ def island3(distanceMatrix, population, iters, lambd, mu, k, alpha, numCities, n
         num_parents = 2*mu
 
         ##### SELECTION
-        #fitness_values = np.array([fitness(ind, distanceMatrix) for ind in population])
         fitness_values = compute_all_shared_fitnesses(population, distanceMatrix)
-        #selected_individuals = exp_selection(distanceMatrix, population, lambd, num_parents, fitness_values, selection_pressure) #Version WITH geometric decay
         selected_individuals = k_tournament_selection(population, num_parents, fitness_values, 3)
 
         # Select from the population:
